@@ -1,18 +1,12 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { initialFiles } from '@/lib/data';
 import type { FileNode, FileType, SortConfig } from '@/lib/types';
-import { produce, enableMapSet } from 'immer';
 
-enableMapSet();
-
-const findNodeByPath = (files: Map<string, FileNode>, path: string): FileNode | null => {
+const findNodeByPath = (files: FileNode[], path: string): FileNode | null => {
     if (path === '/') return null;
-    for (const file of files.values()) {
-        if (file.path === path) return file;
-    }
-    return null;
+    return files.find(file => file.path === path) || null;
 }
 
 const getFileType = (file: File): FileType => {
@@ -24,25 +18,20 @@ const getFileType = (file: File): FileType => {
 
 
 export function useFileManager() {
-  const [files, setFiles] = useState<Map<string, FileNode>>(new Map());
+  const [files, setFiles] = useState<FileNode[]>([]);
   const [currentPath, setCurrentPath] = useState('/');
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'name', direction: 'ascending' });
-  const [selection, setSelection] = useState<Set<string>>(new Set());
 
   useEffect(() => {
+    // Simulate loading
     const timer = setTimeout(() => {
-      const filesMap = new Map(initialFiles.map((file) => [file.id, file]));
-      setFiles(filesMap);
+      setFiles(initialFiles);
       setIsLoading(false);
     }, 500);
     return () => clearTimeout(timer);
   }, []);
-  
-  useEffect(() => {
-    clearSelection();
-  }, [currentPath]);
 
   const changeDirectory = (path: string) => {
     setSearchTerm('');
@@ -53,36 +42,37 @@ export function useFileManager() {
     setSearchTerm(term);
   };
 
-  const createNode = useCallback((name: string, type: FileType) => {
+  const createNode = (name: string, type: FileType) => {
     if (!name) throw new Error("Name cannot be empty.");
     const newPath = currentPath === '/' ? `/${name}` : `${currentPath}/${name}`;
+    if (findNodeByPath(files, newPath)) {
+      throw new Error(`A file or folder with the name "${name}" already exists.`);
+    }
 
-    setFiles(produce(draft => {
-      if (findNodeByPath(draft, newPath)) {
-        throw new Error(`A file or folder with the name "${name}" already exists.`);
-      }
-      const parentNode = findNodeByPath(draft, currentPath);
-      const newNode: FileNode = {
-        id: new Date().getTime().toString(),
-        name,
-        type,
-        path: newPath,
-        parentId: parentNode ? parentNode.id : null,
-        modifiedAt: new Date().toISOString(),
-        size: 0,
-        content: type === 'text' ? '' : undefined,
-      };
-      draft.set(newNode.id, newNode);
-    }));
-  }, [currentPath]);
+    const parentNode = findNodeByPath(files, currentPath);
+    const newNode: FileNode = {
+      id: new Date().getTime().toString(),
+      name,
+      type,
+      path: newPath,
+      parentId: parentNode ? parentNode.id : null,
+      modifiedAt: new Date().toISOString(),
+      size: 0,
+      content: type === 'text' ? '' : undefined,
+    };
 
-  const uploadFile = useCallback((file: File) => {
+    setFiles(prev => [...prev, newNode]);
+  };
+
+  const uploadFile = (file: File) => {
     const newPath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
     if (findNodeByPath(files, newPath)) {
         throw new Error(`A file with the name "${file.name}" already exists.`);
     }
+
     const parentNode = findNodeByPath(files, currentPath);
     const fileType = getFileType(file);
+    
     const newNode: FileNode = {
       id: new Date().getTime().toString(),
       name: file.name,
@@ -96,147 +86,132 @@ export function useFileManager() {
     const reader = new FileReader();
     reader.onload = (e) => {
         const result = e.target?.result as string;
-        setFiles(produce(draft => {
-            const createdNode = draft.get(newNode.id);
-            if(createdNode) {
-                if (fileType === 'image') createdNode.url = result;
-                else if (fileType === 'text') createdNode.content = result.split(',')[1] ? atob(result.split(',')[1]) : '';
+        setFiles(prevFiles => prevFiles.map(f => {
+            if (f.id === newNode.id) {
+                const updatedNode = {...f};
+                if (fileType === 'image') updatedNode.url = result;
+                else if (fileType === 'text') updatedNode.content = result.split(',')[1] ? atob(result.split(',')[1]) : '';
+                return updatedNode;
             }
+            return f;
         }));
     };
-    if (fileType === 'image' || fileType === 'text') reader.readAsDataURL(file);
-    setFiles(produce(draft => { draft.set(newNode.id, newNode); }));
-  }, [currentPath, files]);
 
-  const renameNode = useCallback((id: string, newName: string) => {
+    if (fileType === 'image' || fileType === 'text') {
+        reader.readAsDataURL(file);
+    }
+    
+    setFiles(prev => [...prev, newNode]);
+  };
+
+  const renameNode = (id: string, newName: string) => {
     if (!newName) throw new Error("Name cannot be empty.");
-    setFiles(produce(draft => {
-        const node = draft.get(id);
-        if (!node) return;
-        const parentPath = node.path.substring(0, node.path.lastIndexOf('/')) || '/';
+    let targetNode: FileNode | undefined;
+    let oldPath: string | undefined;
+
+    setFiles(prev => {
+        const nextState = [...prev];
+        targetNode = nextState.find(f => f.id === id);
+        if (!targetNode) return prev;
+
+        const parentPath = targetNode.path.substring(0, targetNode.path.lastIndexOf('/')) || '/';
         const newPath = parentPath === '/' ? `/${newName}` : `${parentPath}/${newName}`;
-        for (const file of draft.values()) {
-            if (file.path === newPath && file.id !== id) {
-                throw new Error(`An item named "${newName}" already exists.`);
-            }
+
+        if (nextState.some(f => f.path === newPath && f.id !== id)) {
+            throw new Error(`An item named "${newName}" already exists.`);
         }
-        const oldPath = node.path;
-        node.name = newName;
-        node.path = newPath;
-        node.modifiedAt = new Date().toISOString();
-        if (node.type === 'folder') {
-            for (const file of draft.values()) {
+        oldPath = targetNode.path;
+        targetNode.name = newName;
+        targetNode.path = newPath;
+        targetNode.modifiedAt = new Date().toISOString();
+
+        // If it's a folder, update paths of all children
+        if (targetNode.type === 'folder' && oldPath) {
+            return nextState.map(file => {
                 if (file.path.startsWith(oldPath + '/')) {
-                    const childNode = draft.get(file.id);
-                    if (childNode) {
-                        childNode.path = newPath + file.path.substring(oldPath.length);
-                    }
+                    return { ...file, path: newPath + file.path.substring(oldPath.length) };
                 }
-            }
+                return file;
+            });
         }
-    }));
-  }, []);
+        return nextState;
+    });
+  };
   
-  const deleteNodes = useCallback((ids: string[]) => {
-    setFiles(produce(draft => {
-      const nodesToDelete = new Set<string>();
+  const deleteNode = (id: string) => {
+    setFiles(prev => {
+      const nodeToDelete = prev.find(f => f.id === id);
+      if (!nodeToDelete) return prev;
 
-      const findChildrenRecursive = (path: string) => {
-          for (const file of draft.values()) {
-              if (file.parentId && draft.has(file.parentId) && draft.get(file.parentId)?.path === path) {
-                  nodesToDelete.add(file.id);
-                  if (file.type === 'folder') {
-                      findChildrenRecursive(file.path);
-                  }
-              }
-          }
-      };
-      
-      for (const id of ids) {
-        const node = draft.get(id);
-        if (node) {
-            nodesToDelete.add(id);
-            if (node.type === 'folder') {
-              findChildrenRecursive(node.path);
-            }
+      if (nodeToDelete.type === 'folder') {
+        const childrenPaths = prev.filter(f => f.path.startsWith(nodeToDelete.path + '/')).map(f => f.path);
+        return prev.filter(f => f.id !== id && !childrenPaths.some(p => f.path.startsWith(p)));
+      }
+      return prev.filter(f => f.id !== id);
+    });
+  };
+
+  const moveNode = (id: string, newParentPath: string) => {
+    setFiles(prev => {
+        const node = prev.find(n => n.id === id);
+        if (!node) return prev;
+
+        const parentNode = findNodeByPath(prev, newParentPath);
+        if (newParentPath !== '/' && !parentNode) {
+            throw new Error("Destination folder does not exist.");
         }
-      }
-
-      for (const id of nodesToDelete) {
-        draft.delete(id);
-      }
-    }));
-    clearSelection();
-  }, []);
-
-  const moveNode = useCallback((id: string, newParentPath: string) => {
-    setFiles(produce(draft => {
-        const node = draft.get(id);
-        if (!node) return;
-        let parentNode: FileNode | null = findNodeByPath(draft, newParentPath);
-        if (newParentPath !== '/' && !parentNode) throw new Error("Destination folder does not exist.");
         
-        if (node.type === 'folder' && (newParentPath === node.path || newParentPath.startsWith(node.path + '/'))) {
+        if (node.type === 'folder' && newParentPath.startsWith(node.path)) {
             throw new Error("Cannot move a folder into itself.");
         }
 
         const newPath = newParentPath === '/' ? `/${node.name}` : `${newParentPath}/${node.name}`;
-        if (findNodeByPath(draft, newPath)) throw new Error(`An item named "${node.name}" already exists in the destination.`);
-        
-        const oldPath = node.path;
-        node.path = newPath;
-        node.parentId = parentNode ? parentNode.id : null;
-        node.modifiedAt = new Date().toISOString();
 
-        if (node.type === 'folder') {
-            for (const file of draft.values()) {
-                if (file.path.startsWith(oldPath + '/')) {
-                    const childNode = draft.get(file.id);
-                    if (childNode) {
-                        childNode.path = newPath + file.path.substring(oldPath.length);
-                    }
-                }
-            }
+        if (prev.some(f => f.path === newPath)) {
+            throw new Error(`An item named "${node.name}" already exists in the destination.`);
         }
-    }));
-  }, []);
 
-  const getFolderPath = useCallback(() => {
-    return ['/', ...Array.from(files.values()).filter(f => f.type === 'folder').map(f => f.path)].sort();
-  }, [files]);
-  
+        const oldPath = node.path;
+
+        const updatedFiles = prev.map(f => {
+            if (f.id === id) {
+                return { ...f, path: newPath, parentId: parentNode ? parentNode.id : null, modifiedAt: new Date().toISOString() };
+            }
+            if (node.type === 'folder' && f.path.startsWith(oldPath + '/')) {
+                return { ...f, path: newPath + f.path.substring(oldPath.length) };
+            }
+            return f;
+        });
+
+        return updatedFiles;
+    });
+  };
+
+  const getFolderPath = () => {
+    return ['/', ...files.filter(f => f.type === 'folder').map(f => f.path)].sort();
+  }
+
   const currentFiles = useMemo(() => {
-    const filesInCurrentDir = Array.from(files.values()).filter(file => (file.path.substring(0, file.path.lastIndexOf('/')) || '/') === currentPath);
+    const parentId = findNodeByPath(files, currentPath)?.id || null;
+    const filesInCurrentDir = files.filter(file => file.parentId === parentId);
+    
     const filtered = searchTerm ? filesInCurrentDir.filter(f => f.name.toLowerCase().includes(searchTerm.toLowerCase())) : filesInCurrentDir;
 
     return [...filtered].sort((a, b) => {
       if (a.type === 'folder' && b.type !== 'folder') return -1;
       if (a.type !== 'folder' && b.type === 'folder') return 1;
+
       const valA = a[sortConfig.key];
       const valB = b[sortConfig.key];
       let comparison = 0;
-      if (typeof valA === 'string' && typeof valB === 'string') comparison = valA.localeCompare(valB);
-      else if (typeof valA === 'number' && typeof valB === 'number') comparison = valA - valB;
+      if (typeof valA === 'string' && typeof valB === 'string') {
+        comparison = valA.localeCompare(valB);
+      } else if (typeof valA === 'number' && typeof valB === 'number') {
+        comparison = valA - valB;
+      }
       return sortConfig.direction === 'ascending' ? comparison : -comparison;
     });
   }, [files, currentPath, searchTerm, sortConfig]);
-
-  const toggleSelection = (id: string) => {
-    setSelection(produce(draft => {
-      if (draft.has(id)) draft.delete(id);
-      else draft.add(id);
-    }));
-  };
-  
-  const selectRange = (ids: string[]) => {
-    setSelection(produce(draft => {
-      ids.forEach(id => draft.add(id));
-    }));
-  };
-
-  const clearSelection = () => {
-    if(selection.size > 0) setSelection(new Set());
-  };
 
   return {
     files,
@@ -244,7 +219,7 @@ export function useFileManager() {
     currentFiles,
     changeDirectory,
     createNode,
-    deleteNodes,
+    deleteNode,
     renameNode,
     moveNode,
     getFolderPath,
@@ -254,9 +229,5 @@ export function useFileManager() {
     sortConfig,
     setSortConfig,
     uploadFile,
-    selection,
-    toggleSelection,
-    clearSelection,
-    selectRange
   };
 }
