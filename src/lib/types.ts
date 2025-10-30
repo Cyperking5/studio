@@ -11,3 +11,10 @@ export type FileNode = {
   content?: string; // For previewable files like text
   url?: string; // For previewable files like images/pdfs
 };
+
+export type SortConfig = {
+  key: keyof FileNode;
+  direction: 'ascending' | 'descending';
+};
+
+    

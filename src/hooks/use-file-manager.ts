@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { initialFiles } from '@/lib/data';
-import type { FileNode, FileType } from '@/lib/types';
+import type { FileNode, FileType, SortConfig } from '@/lib/types';
 import { produce } from 'immer';
 
 export function useFileManager() {
@@ -10,6 +10,7 @@ export function useFileManager() {
   const [currentPath, setCurrentPath] = useState('/');
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'name', direction: 'ascending' });
 
   useEffect(() => {
     // Simulate loading from an API
@@ -35,6 +36,21 @@ export function useFileManager() {
     const parentPath = path.substring(0, path.lastIndexOf('/')) || '/';
     for (const file of files.values()) {
         if (file.path === parentPath) {
+            return file.id;
+        }
+    }
+    // Fallback for root files if parent isn't found by path
+    if (parentPath === '/') return null;
+
+    // This part is tricky. A better approach would be to have a reliable way to get parent ID.
+    // For now, this is a simplified heuristic.
+    const pathParts = path.split('/').filter(p => p);
+    if (pathParts.length <= 1) return null; // Root file
+
+    const parentName = pathParts[pathParts.length-2];
+    for (const file of files.values()) {
+        if(file.name === parentName && file.type === 'folder'){
+            // This is still not guaranteed to be correct if names are not unique across directories
             return file.id;
         }
     }
@@ -183,12 +199,23 @@ export function useFileManager() {
         )
       : filesInCurrentDir;
 
-    return filtered.sort((a, b) => {
-        if (a.type === 'folder' && b.type !== 'folder') return -1;
-        if (a.type !== 'folder' && b.type === 'folder') return 1;
-        return a.name.localeCompare(b.name);
+    return [...filtered].sort((a, b) => {
+      if (a.type === 'folder' && b.type !== 'folder') return -1;
+      if (a.type !== 'folder' && b.type === 'folder') return 1;
+
+      const valA = a[sortConfig.key];
+      const valB = b[sortConfig.key];
+      
+      let comparison = 0;
+      if (typeof valA === 'string' && typeof valB === 'string') {
+        comparison = valA.localeCompare(valB);
+      } else if (typeof valA === 'number' && typeof valB === 'number') {
+        comparison = valA - valB;
+      }
+      
+      return sortConfig.direction === 'ascending' ? comparison : -comparison;
     });
-  }, [files, currentPath, searchTerm]);
+  }, [files, currentPath, searchTerm, sortConfig]);
 
   return {
     files,
@@ -201,7 +228,11 @@ export function useFileManager() {
     moveNode,
     getFolderPath,
     search,
-    searchTerm,
-    isLoading
+searchTerm,
+    isLoading,
+    sortConfig,
+    setSortConfig,
   };
 }
+
+    

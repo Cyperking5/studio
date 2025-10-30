@@ -17,13 +17,14 @@ import {
   PenSquare,
   Home,
   ChevronRight,
-  Loader2,
-  X,
+  ArrowUpDown,
+  LayoutGrid,
+  List,
 } from 'lucide-react';
 import React, { useState } from 'react';
 import { useFileManager } from '@/hooks/use-file-manager';
 import { useIsMobile } from '@/hooks/use-mobile';
-import type { FileNode, FileType } from '@/lib/types';
+import type { FileNode, FileType, SortConfig } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -53,16 +54,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { AiSuggestionDialog } from './ai-suggestion-dialog';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 
 type ActionType = 'create-folder' | 'create-file' | 'rename' | 'delete' | 'move';
+type ViewMode = 'list' | 'grid';
 
-const FileTypeIcon = ({ type }: { type: FileType }) => {
-  const iconProps = { className: 'w-5 h-5 text-muted-foreground' };
+const FileTypeIcon = ({ type, className }: { type: FileType, className?: string }) => {
+  const iconProps = { className: cn('w-5 h-5 text-muted-foreground', className) };
   switch (type) {
     case 'folder':
       return <Folder {...iconProps} fill="currentColor" />;
@@ -98,6 +101,8 @@ export function FileExplorer() {
     search,
     searchTerm,
     isLoading,
+    sortConfig,
+    setSortConfig,
   } = useFileManager();
   const isMobile = useIsMobile();
   const { toast } = useToast();
@@ -107,6 +112,7 @@ export function FileExplorer() {
   const [actionType, setActionType] = useState<ActionType | null>(null);
   const [inputValue, setInputValue] = useState('');
   const [moveToPath, setMoveToPath] = useState<string>('');
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
   
   const openActionDialog = (type: ActionType, node: FileNode | null) => {
     setActionType(type);
@@ -169,6 +175,15 @@ export function FileExplorer() {
     } else {
         toast({ title: "Preview not available", description: `Cannot preview files of type "${file.type}".` });
     }
+  };
+
+  const handleSort = (key: SortConfig['key']) => {
+    setSortConfig(prevConfig => {
+      if (prevConfig.key === key && prevConfig.direction === 'ascending') {
+        return { key, direction: 'descending' };
+      }
+      return { key, direction: 'ascending' };
+    });
   };
 
   const renderBreadcrumbs = () => (
@@ -255,42 +270,73 @@ export function FileExplorer() {
     </DropdownMenu>
   );
 
-  const renderDesktopView = () => (
-    <ScrollArea className="h-full">
-      <Table>
-        <TableHeader className="sticky top-0 bg-background/95 backdrop-blur-sm">
-          <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>Date Modified</TableHead>
-            <TableHead>File Size</TableHead>
-            <TableHead className="text-right w-[50px]"></TableHead>
+  const SortableHeader = ({ title, sortKey }: { title: string, sortKey: SortConfig['key'] }) => (
+    <TableHead>
+      <Button variant="ghost" onClick={() => handleSort(sortKey)} className="px-2">
+        {title}
+        <ArrowUpDown className="ml-2 h-4 w-4" />
+      </Button>
+    </TableHead>
+  );
+
+  const renderListView = () => (
+    <Table>
+      <TableHeader className="sticky top-0 bg-background/95 backdrop-blur-sm">
+        <TableRow>
+          <SortableHeader title="Name" sortKey="name" />
+          <SortableHeader title="Date Modified" sortKey="modifiedAt" />
+          <SortableHeader title="File Size" sortKey="size" />
+          <TableHead className="text-right w-[50px]"></TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {isLoading ? Array(5).fill(0).map((_, i) => (
+          <TableRow key={i}>
+              <TableCell><Skeleton className="h-5 w-48" /></TableCell>
+              <TableCell><Skeleton className="h-5 w-32" /></TableCell>
+              <TableCell><Skeleton className="h-5 w-20" /></TableCell>
+              <TableCell></TableCell>
           </TableRow>
-        </TableHeader>
-        <TableBody>
-          {isLoading ? Array(5).fill(0).map((_, i) => (
-            <TableRow key={i}>
-                <TableCell><Skeleton className="h-5 w-48" /></TableCell>
-                <TableCell><Skeleton className="h-5 w-32" /></TableCell>
-                <TableCell><Skeleton className="h-5 w-20" /></TableCell>
-                <TableCell></TableCell>
-            </TableRow>
-          )) :
-          currentFiles.map((file) => (
-            <TableRow key={file.id} onDoubleClick={() => handleFileClick(file)} className="cursor-pointer" onClick={isMobile ? () => handleFileClick(file) : undefined}>
-              <TableCell>
-                <div className="flex items-center gap-3">
-                  <FileTypeIcon type={file.type} />
-                  <span className="font-medium">{file.name}</span>
-                </div>
-              </TableCell>
-              <TableCell>{formatDistanceToNow(new Date(file.modifiedAt), { addSuffix: true })}</TableCell>
-              <TableCell>{file.type !== 'folder' ? formatSize(file.size) : '-'}</TableCell>
-              <TableCell className="text-right">{renderActionsDropdown(file)}</TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </ScrollArea>
+        )) :
+        currentFiles.map((file) => (
+          <TableRow key={file.id} onDoubleClick={() => handleFileClick(file)} className="cursor-pointer" onClick={isMobile ? () => handleFileClick(file) : undefined}>
+            <TableCell>
+              <div className="flex items-center gap-3">
+                <FileTypeIcon type={file.type} />
+                <span className="font-medium">{file.name}</span>
+              </div>
+            </TableCell>
+            <TableCell>{formatDistanceToNow(new Date(file.modifiedAt), { addSuffix: true })}</TableCell>
+            <TableCell>{file.type !== 'folder' ? formatSize(file.size) : '-'}</TableCell>
+            <TableCell className="text-right">{renderActionsDropdown(file)}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+
+  const renderGridView = () => (
+    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4 p-4">
+    {isLoading ? Array(8).fill(0).map((_, i) => (
+      <Card key={i}><CardContent className="p-4"><Skeleton className="h-24 w-full" /></CardContent></Card>
+    )) :
+    currentFiles.map((file) => (
+      <Card key={file.id} onDoubleClick={() => handleFileClick(file)} className="cursor-pointer group relative active:bg-secondary" onClick={() => handleFileClick(file)}>
+          <CardContent className="p-0 aspect-square flex flex-col items-center justify-center text-center">
+              {file.type === 'image' && file.url ? (
+                  <Image src={file.url} alt={file.name} layout="fill" objectFit="cover" className="rounded-t-lg" />
+              ) : (
+                  <FileTypeIcon type={file.type} className="w-12 h-12" />
+              )}
+          </CardContent>
+          <div className="p-2 border-t text-sm">
+            <p className="font-medium truncate">{file.name}</p>
+            <p className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(file.modifiedAt), { addSuffix: true })}</p>
+          </div>
+          <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>{renderActionsDropdown(file)}</div>
+      </Card>
+    ))}
+    </div>
   );
   
   const renderMobileView = () => (
@@ -320,7 +366,7 @@ export function FileExplorer() {
   return (
     <div className="flex flex-col h-full bg-background text-foreground rounded-lg">
       <header className="p-4 border-b flex-shrink-0">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h1 className="text-2xl font-bold tracking-tight">FileSurfer</h1>
           <div className="flex items-center gap-2">
             <AiSuggestionDialog />
@@ -341,9 +387,21 @@ export function FileExplorer() {
             </DropdownMenu>
           </div>
         </div>
-        <div className="relative">
+        <div className="flex items-center gap-4">
+        <div className="relative flex-grow">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Search in this folder..." className="pl-9" value={searchTerm} onChange={(e) => search(e.target.value)} />
+        </div>
+        {!isMobile && (
+          <ToggleGroup type="single" value={viewMode} onValueChange={(value) => value && setViewMode(value as ViewMode)} defaultValue="list">
+              <ToggleGroupItem value="list" aria-label="List view">
+                  <List className="h-4 w-4" />
+              </ToggleGroupItem>
+              <ToggleGroupItem value="grid" aria-label="Grid view">
+                  <LayoutGrid className="h-4 w-4" />
+              </ToggleGroupItem>
+          </ToggleGroup>
+        )}
         </div>
       </header>
       
@@ -352,7 +410,9 @@ export function FileExplorer() {
       </nav>
 
       <div className="flex-grow overflow-hidden">
-        {isMobile ? renderMobileView() : renderDesktopView()}
+        <ScrollArea className="h-full">
+            {isMobile ? renderMobileView() : (viewMode === 'list' ? renderListView() : renderGridView())}
+        </ScrollArea>
       </div>
 
       <Dialog open={!!actionType && ['create-folder', 'create-file', 'rename', 'move'].includes(actionType)} onOpenChange={(isOpen) => !isOpen && closeActionDialog()}>
@@ -412,7 +472,7 @@ export function FileExplorer() {
           <div className="flex-grow overflow-auto my-4 rounded-md border bg-secondary/50">
             {previewFile?.type === 'image' && previewFile.url && (
               <div className="relative w-full h-full">
-                <Image src={previewFile.url} alt={previewFile.name} layout="fill" objectFit="contain" />
+                <Image src={previewFile.url} alt={previewFile.name} fill={true} objectFit="contain" />
               </div>
             )}
             {previewFile?.type === 'text' && (
@@ -435,3 +495,5 @@ export function FileExplorer() {
     </div>
   );
 }
+
+    
