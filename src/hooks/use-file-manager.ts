@@ -6,11 +6,8 @@ import type { FileNode, FileType, SortConfig } from '@/lib/types';
 import { produce } from 'immer';
 
 // Helper function to find a file by path.
-// This is more reliable than iterating and guessing parent IDs.
 const findNodeByPath = (files: Map<string, FileNode>, path: string): FileNode | null => {
     if (path === '/') {
-        // There's no actual node for '/', it's the root container.
-        // We can return a virtual root node if needed, but for parent ID, null is correct.
         return null;
     }
     for (const file of files.values()) {
@@ -19,6 +16,13 @@ const findNodeByPath = (files: Map<string, FileNode>, path: string): FileNode | 
         }
     }
     return null;
+}
+
+const getFileType = (file: File): FileType => {
+    if (file.type.startsWith('image/')) return 'image';
+    if (file.type === 'application/pdf') return 'pdf';
+    if (file.type.startsWith('text/')) return 'text';
+    return 'other';
 }
 
 
@@ -75,6 +79,49 @@ export function useFileManager() {
     }));
   };
 
+  const uploadFile = (file: File) => {
+    const newPath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
+
+    if (findNodeByPath(files, newPath)) {
+        throw new Error(`A file with the name "${file.name}" already exists.`);
+    }
+
+    const parentNode = findNodeByPath(files, currentPath);
+    const fileType = getFileType(file);
+
+    const newNode: FileNode = {
+      id: new Date().getTime().toString(),
+      name: file.name,
+      type: fileType,
+      path: newPath,
+      parentId: parentNode ? parentNode.id : null,
+      modifiedAt: new Date(file.lastModified).toISOString(),
+      size: file.size,
+    };
+
+    if (fileType === 'image' || fileType === 'text') {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const result = e.target?.result as string;
+            setFiles(produce(draft => {
+                const node = draft.get(newNode.id);
+                if (node) {
+                    if (fileType === 'image') {
+                        node.url = result;
+                    } else if (fileType === 'text') {
+                        node.content = result;
+                    }
+                }
+            }));
+        };
+        reader.readAsDataURL(file);
+    }
+    
+    setFiles(produce(draft => {
+      draft.set(newNode.id, newNode);
+    }));
+  }
+
   const renameNode = (id: string, newName: string) => {
     if (!newName) throw new Error("Name cannot be empty.");
 
@@ -100,12 +147,7 @@ export function useFileManager() {
         // Update children paths if it's a folder
         if (node.type === 'folder') {
             for (const file of draft.values()) {
-                if (file.parentId === id) {
-                     const childNode = draft.get(file.id);
-                     if(childNode) {
-                        childNode.path = newPath + childNode.path.substring(oldPath.length);
-                     }
-                } else if (file.path.startsWith(oldPath + '/')) { // Grandchildren etc.
+                if (file.path.startsWith(oldPath + '/')) {
                     const childNode = draft.get(file.id);
                     if (childNode) {
                         childNode.path = newPath + file.path.substring(oldPath.length);
@@ -123,7 +165,6 @@ export function useFileManager() {
 
         const nodesToDelete = [id];
         if (node.type === 'folder') {
-            // Recursively find all children to delete
             const findChildren = (folderPath: string) => {
                 for (const file of draft.values()) {
                     if (file.path.startsWith(folderPath + '/')) {
@@ -149,6 +190,10 @@ export function useFileManager() {
         const parentNode = findNodeByPath(draft, newParentPath);
         if (newParentPath !== '/' && !parentNode) {
             throw new Error("Destination folder does not exist.");
+        }
+
+        if (newParentPath.startsWith(node.path)) {
+            throw new Error("Cannot move a folder into itself.");
         }
 
         const newPath = newParentPath === '/' ? `/${node.name}` : `${newParentPath}/${node.name}`;
@@ -231,5 +276,8 @@ export function useFileManager() {
     isLoading,
     sortConfig,
     setSortConfig,
+    uploadFile,
   };
 }
+
+    

@@ -20,8 +20,9 @@ import {
   ArrowUpDown,
   LayoutGrid,
   List,
+  Upload,
 } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useFileManager } from '@/hooks/use-file-manager';
 import { useIsMobile } from '@/hooks/use-mobile';
 import type { FileNode, FileType, SortConfig } from '@/lib/types';
@@ -61,6 +62,7 @@ import { useToast } from '@/hooks/use-toast';
 import { AiSuggestionDialog } from './ai-suggestion-dialog';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { cn } from '@/lib/utils';
+import { ThemeToggle } from './theme-toggle';
 
 type ActionType = 'create-folder' | 'create-file' | 'rename' | 'delete' | 'move';
 type ViewMode = 'list' | 'grid';
@@ -104,9 +106,11 @@ export function FileExplorer() {
     isLoading,
     sortConfig,
     setSortConfig,
+    uploadFile,
   } = useFileManager();
   const isMobile = useIsMobile();
   const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [previewFile, setPreviewFile] = useState<FileNode | null>(null);
   const [actionNode, setActionNode] = useState<FileNode | null>(null);
@@ -166,6 +170,23 @@ export function FileExplorer() {
       toast({ variant: "destructive", title: "Error", description: err.message });
     }
     closeActionDialog();
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      try {
+        uploadFile(file);
+        toast({ title: "File uploaded", description: `"${file.name}" has been uploaded.` });
+      } catch (e) {
+        const err = e as Error;
+        toast({ variant: "destructive", title: "Upload failed", description: err.message });
+      }
+    }
+    // Reset file input
+    if(event.target) {
+        event.target.value = '';
+    }
   };
   
   const handleFileClick = (file: FileNode) => {
@@ -370,6 +391,7 @@ export function FileExplorer() {
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h1 className="text-2xl font-bold tracking-tight">FileSurfer</h1>
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             <AiSuggestionDialog />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -384,8 +406,18 @@ export function FileExplorer() {
                 <DropdownMenuItem onClick={() => openActionDialog('create-file', null)}>
                   <FileIcon className="mr-2 h-4 w-4" /> New File
                 </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
+                  <Upload className="mr-2 h-4 w-4" /> Upload File
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileUpload}
+              className="hidden"
+            />
           </div>
         </div>
         <div className="flex items-center gap-4">
@@ -504,3 +536,5 @@ export function FileExplorer() {
     </div>
   );
 }
+
+    
