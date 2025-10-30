@@ -1,9 +1,26 @@
 "use client";
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { initialFiles } from '@/lib/data';
 import type { FileNode, FileType, SortConfig } from '@/lib/types';
 import { produce } from 'immer';
+
+// Helper function to find a file by path.
+// This is more reliable than iterating and guessing parent IDs.
+const findNodeByPath = (files: Map<string, FileNode>, path: string): FileNode | null => {
+    if (path === '/') {
+        // There's no actual node for '/', it's the root container.
+        // We can return a virtual root node if needed, but for parent ID, null is correct.
+        return null;
+    }
+    for (const file of files.values()) {
+        if (file.path === path) {
+            return file;
+        }
+    }
+    return null;
+}
+
 
 export function useFileManager() {
   const [files, setFiles] = useState<Map<string, FileNode>>(new Map());
@@ -31,59 +48,30 @@ export function useFileManager() {
     setSearchTerm(term);
   };
 
-  const getParentIdForPath = (path: string): string | null => {
-    if (path === '/') return null;
-    const parentPath = path.substring(0, path.lastIndexOf('/')) || '/';
-    for (const file of files.values()) {
-        if (file.path === parentPath) {
-            return file.id;
-        }
-    }
-    // Fallback for root files if parent isn't found by path
-    if (parentPath === '/') return null;
-
-    // This part is tricky. A better approach would be to have a reliable way to get parent ID.
-    // For now, this is a simplified heuristic.
-    const pathParts = path.split('/').filter(p => p);
-    if (pathParts.length <= 1) return null; // Root file
-
-    const parentName = pathParts[pathParts.length-2];
-    for (const file of files.values()) {
-        if(file.name === parentName && file.type === 'folder'){
-            // This is still not guaranteed to be correct if names are not unique across directories
-            return file.id;
-        }
-    }
-    return null;
-  }
-
   const createNode = (name: string, type: FileType) => {
     if (!name) throw new Error("Name cannot be empty.");
 
     const newPath = currentPath === '/' ? `/${name}` : `${currentPath}/${name}`;
     
-    for (const file of files.values()) {
-        if (file.path === newPath) {
-            throw new Error(`A file or folder with the name "${name}" already exists.`);
-        }
+    if (findNodeByPath(files, newPath)) {
+        throw new Error(`A file or folder with the name "${name}" already exists.`);
     }
     
-    const newId = new Date().getTime().toString();
-    const parentId = getParentIdForPath(currentPath);
+    const parentNode = findNodeByPath(files, currentPath);
 
     const newNode: FileNode = {
-      id: newId,
+      id: new Date().getTime().toString(),
       name,
       type,
       path: newPath,
-      parentId,
+      parentId: parentNode ? parentNode.id : null,
       modifiedAt: new Date().toISOString(),
       size: 0,
       content: type === 'text' ? '' : undefined,
     };
 
     setFiles(produce(draft => {
-      draft.set(newId, newNode);
+      draft.set(newNode.id, newNode);
     }));
   };
 
@@ -94,10 +82,10 @@ export function useFileManager() {
         const node = draft.get(id);
         if (!node) return;
 
-        const parentPath = node.path.substring(0, node.path.lastIndexOf('/')) || '';
-        const newPath = parentPath === '' ? `/${newName}` : `${parentPath}/${newName}`;
+        const parentPath = node.path.substring(0, node.path.lastIndexOf('/')) || '/';
+        const newPath = parentPath === '/' ? `/${newName}` : `${parentPath}/${newName}`;
 
-        // Check for name collision
+        // Check for name collision in the same directory
         for (const file of draft.values()) {
             if (file.path === newPath && file.id !== id) {
                 throw new Error(`An item named "${newName}" already exists.`);
@@ -112,11 +100,15 @@ export function useFileManager() {
         // Update children paths if it's a folder
         if (node.type === 'folder') {
             for (const file of draft.values()) {
-                if (file.path.startsWith(oldPath + '/')) {
-                    const updatedPath = newPath + file.path.substring(oldPath.length);
+                if (file.parentId === id) {
+                     const childNode = draft.get(file.id);
+                     if(childNode) {
+                        childNode.path = newPath + childNode.path.substring(oldPath.length);
+                     }
+                } else if (file.path.startsWith(oldPath + '/')) { // Grandchildren etc.
                     const childNode = draft.get(file.id);
                     if (childNode) {
-                        childNode.path = updatedPath;
+                        childNode.path = newPath + file.path.substring(oldPath.length);
                     }
                 }
             }
@@ -131,12 +123,20 @@ export function useFileManager() {
 
         const nodesToDelete = [id];
         if (node.type === 'folder') {
-            for (const file of draft.values()) {
-                if(file.path.startsWith(node.path + '/')) {
-                    nodesToDelete.push(file.id);
+            // Recursively find all children to delete
+            const findChildren = (folderPath: string) => {
+                for (const file of draft.values()) {
+                    if (file.path.startsWith(folderPath + '/')) {
+                        nodesToDelete.push(file.id);
+                        if (file.type === 'folder') {
+                            findChildren(file.path);
+                        }
+                    }
                 }
             }
+            findChildren(node.path);
         }
+        
         nodesToDelete.forEach(deleteId => draft.delete(deleteId));
     }));
   };
@@ -145,20 +145,21 @@ export function useFileManager() {
     setFiles(produce(draft => {
         const node = draft.get(id);
         if (!node) return;
+        
+        const parentNode = findNodeByPath(draft, newParentPath);
+        if (newParentPath !== '/' && !parentNode) {
+            throw new Error("Destination folder does not exist.");
+        }
 
         const newPath = newParentPath === '/' ? `/${node.name}` : `${newParentPath}/${node.name}`;
         
-        for (const file of draft.values()) {
-            if (file.path === newPath && file.id !== id) {
-                throw new Error(`An item named "${node.name}" already exists in the destination.`);
-            }
+        if (findNodeByPath(draft, newPath)) {
+            throw new Error(`An item named "${node.name}" already exists in the destination.`);
         }
         
-        const newParentId = getParentIdForPath(newParentPath);
-
         const oldPath = node.path;
         node.path = newPath;
-        node.parentId = newParentId;
+        node.parentId = parentNode ? parentNode.id : null;
         node.modifiedAt = new Date().toISOString();
 
         if (node.type === 'folder') {
@@ -175,7 +176,7 @@ export function useFileManager() {
     }));
   }
 
-  const getFolderPath = () => {
+  const getFolderPath = useCallback(() => {
     const folderPaths = ['/'];
     for(const file of files.values()){
         if(file.type === 'folder'){
@@ -183,14 +184,12 @@ export function useFileManager() {
         }
     }
     return folderPaths.sort();
-  };
+  }, [files]);
   
   const currentFiles = useMemo(() => {
     const filesInCurrentDir = Array.from(files.values()).filter(file => {
       const parentPath = file.path.substring(0, file.path.lastIndexOf('/')) || '/';
-      const isRootFile = !file.path.includes('/') && currentPath === '/';
-      const isRootFileWithSlash = file.path.lastIndexOf('/') === 0 && currentPath === '/';
-      return parentPath === currentPath || isRootFile || isRootFileWithSlash;
+      return parentPath === currentPath;
     });
 
     const filtered = searchTerm
@@ -228,7 +227,7 @@ export function useFileManager() {
     moveNode,
     getFolderPath,
     search,
-searchTerm,
+    searchTerm,
     isLoading,
     sortConfig,
     setSortConfig,
