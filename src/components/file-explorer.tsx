@@ -22,7 +22,7 @@ import {
   List,
   Upload,
 } from 'lucide-react';
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useFileManager } from '@/hooks/use-file-manager';
 import { useIsMobile } from '@/hooks/use-mobile';
 import type { FileNode, FileType, SortConfig } from '@/lib/types';
@@ -42,11 +42,14 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
-  DropdownMenuPortal,
 } from '@/components/ui/dropdown-menu';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu';
 import {
   Dialog,
   DialogContent,
@@ -97,7 +100,7 @@ export function FileExplorer() {
     currentPath,
     changeDirectory,
     createNode,
-    deleteNode,
+    deleteNodes,
     renameNode,
     moveNode,
     search,
@@ -107,11 +110,16 @@ export function FileExplorer() {
     setSortConfig,
     uploadFile,
     getFolderPath,
+    selection,
+    toggleSelection,
+    clearSelection,
+    selectRange,
   } = useFileManager();
   const isMobile = useIsMobile();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
   const [previewFile, setPreviewFile] = useState<FileNode | null>(null);
   const [actionNode, setActionNode] = useState<FileNode | null>(null);
   const [actionType, setActionType] = useState<ActionType | null>(null);
@@ -156,8 +164,11 @@ export function FileExplorer() {
           }
           break;
         case 'delete':
-          if (actionNode) {
-            deleteNode(actionNode.id);
+          if (selection.size > 0) {
+            deleteNodes([...selection]);
+            toast({ title: "Deleted", description: `${selection.size} item(s) have been deleted.` });
+          } else if (actionNode) {
+            deleteNodes([actionNode.id]);
             toast({ title: "Deleted", description: `"${actionNode.name}" has been deleted.` });
           }
           break;
@@ -186,13 +197,28 @@ export function FileExplorer() {
         toast({ variant: "destructive", title: "Upload failed", description: err.message });
       }
     }
-    // Reset file input
     if(event.target) {
         event.target.value = '';
     }
   };
   
-  const handleFileClick = (file: FileNode) => {
+  const handleItemClick = (e: React.MouseEvent, node: FileNode, index: number) => {
+    if (e.ctrlKey || e.metaKey) {
+      toggleSelection(node.id);
+      setLastSelectedIndex(index);
+    } else if (e.shiftKey && lastSelectedIndex !== null) {
+      const start = Math.min(lastSelectedIndex, index);
+      const end = Math.max(lastSelectedIndex, index);
+      const rangeIds = currentFiles.slice(start, end + 1).map(f => f.id);
+      selectRange(rangeIds);
+    } else {
+      clearSelection();
+      toggleSelection(node.id);
+      setLastSelectedIndex(index);
+    }
+  };
+
+  const handleDoubleClick = (file: FileNode) => {
     if (file.type === 'folder') {
       changeDirectory(file.path);
     } else if (file.type === 'image' || file.type === 'text' || file.type === 'pdf') {
@@ -212,6 +238,14 @@ export function FileExplorer() {
   };
 
   const folderPaths = useMemo(() => getFolderPath(), [getFolderPath]);
+  
+  const handleContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // If click is on the container itself and not on a file/folder item
+    if (e.target === e.currentTarget) {
+        clearSelection();
+        setLastSelectedIndex(null);
+    }
+  };
 
   const renderBreadcrumbs = () => (
     <div className="flex items-center gap-1 text-sm text-muted-foreground flex-wrap">
@@ -241,6 +275,62 @@ export function FileExplorer() {
       )}
     </div>
   );
+
+  const renderContextMenuContent = (node: FileNode) => {
+    const isMultiSelect = selection.size > 1;
+    const isNodeSelected = selection.has(node.id);
+    return (
+      <>
+        <ContextMenuItem
+          onClick={() => openActionDialog('rename', node)}
+          disabled={isMultiSelect}
+        >
+          <PenSquare className="mr-2 h-4 w-4" />
+          <span>Rename</span>
+        </ContextMenuItem>
+        
+        <ContextMenuItem
+          onClick={() => openActionDialog('move', node)}
+          disabled={isMultiSelect}
+        >
+            <Move className="mr-2 h-4 w-4" />
+            <span>Move to</span>
+        </ContextMenuItem>
+
+        <ContextMenuItem onClick={() => {
+            if (navigator.share) {
+                navigator.share({
+                    title: node.name,
+                    text: `Check out this file: ${node.name}`,
+                }).catch((error) => console.error('Error sharing:', error));
+            } else {
+                toast({title: "Share not supported on this browser."})
+            }
+        }} disabled={isMultiSelect}>
+          <Share2 className="mr-2 h-4 w-4" />
+          <span>Share</span>
+        </ContextMenuItem>
+        <ContextMenuItem onClick={() => toast({title: "Copy not implemented."})}>
+          <Copy className="mr-2 h-4 w-4" />
+          <span>Copy</span>
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem
+          className="text-destructive focus:text-destructive-foreground focus:bg-destructive"
+          onClick={() => {
+            if (!isNodeSelected) {
+              clearSelection();
+              toggleSelection(node.id);
+            }
+            openActionDialog('delete', node);
+          }}
+        >
+          <Trash2 className="mr-2 h-4 w-4" />
+          <span>{isMultiSelect && isNodeSelected ? `Delete ${selection.size} items` : "Delete"}</span>
+        </ContextMenuItem>
+      </>
+    );
+  }
 
   const renderActionsDropdown = (node: FileNode) => (
     <DropdownMenu>
@@ -294,8 +384,33 @@ export function FileExplorer() {
       </Button>
     </TableHead>
   );
+  
+  const FileListItem = ({ file, index }: { file: FileNode, index: number }) => (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <TableRow
+          data-selected={selection.has(file.id)}
+          className="cursor-pointer data-[selected=true]:bg-secondary"
+          onClick={(e) => handleItemClick(e, file, index)}
+          onDoubleClick={() => handleDoubleClick(file)}
+        >
+          <TableCell>
+            <div className="flex items-center gap-3">
+              <FileTypeIcon type={file.type} />
+              <span className="font-medium">{file.name}</span>
+            </div>
+          </TableCell>
+          <TableCell>{formatDistanceToNow(new Date(file.modifiedAt), { addSuffix: true })}</TableCell>
+          <TableCell>{file.type !== 'folder' ? formatSize(file.size) : '-'}</TableCell>
+          <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>{renderActionsDropdown(file)}</TableCell>
+        </TableRow>
+      </ContextMenuTrigger>
+      <ContextMenuContent>{renderContextMenuContent(file)}</ContextMenuContent>
+    </ContextMenu>
+  );
 
   const renderListView = () => (
+    <div onClick={handleContainerClick} className="p-4 h-full">
     <Table>
       <TableHeader className="sticky top-0 bg-background/95 backdrop-blur-sm">
         <TableRow>
@@ -314,73 +429,89 @@ export function FileExplorer() {
               <TableCell></TableCell>
           </TableRow>
         )) :
-        currentFiles.map((file) => (
-          <TableRow key={file.id} onDoubleClick={() => handleFileClick(file)} className="cursor-pointer" onClick={isMobile ? () => handleFileClick(file) : undefined}>
-            <TableCell>
-              <div className="flex items-center gap-3">
-                <FileTypeIcon type={file.type} />
-                <span className="font-medium">{file.name}</span>
-              </div>
-            </TableCell>
-            <TableCell>{formatDistanceToNow(new Date(file.modifiedAt), { addSuffix: true })}</TableCell>
-            <TableCell>{file.type !== 'folder' ? formatSize(file.size) : '-'}</TableCell>
-            <TableCell className="text-right">{renderActionsDropdown(file)}</TableCell>
-          </TableRow>
-        ))}
+        currentFiles.map((file, index) => <FileListItem key={file.id} file={file} index={index} />)
+        }
       </TableBody>
     </Table>
-  );
-
-  const renderGridView = () => (
-    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4 p-4">
-    {isLoading ? Array(8).fill(0).map((_, i) => (
-      <Card key={i}><CardContent className="p-4 aspect-square flex flex-col items-center justify-center"><Skeleton className="h-12 w-12 mb-2" /><Skeleton className="h-4 w-20" /></CardContent></Card>
-    )) :
-    currentFiles.map((file) => (
-      <Card key={file.id} onDoubleClick={() => handleFileClick(file)} className="cursor-pointer group relative active:bg-secondary" onClick={() => handleFileClick(file)}>
-          <CardContent className="p-0 aspect-square flex flex-col items-center justify-center text-center">
-              {file.type === 'image' && file.url ? (
-                  <Image src={file.url} alt={file.name} fill={true} objectFit="cover" className="rounded-t-lg" />
-              ) : (
-                  <FileTypeIcon type={file.type} className="w-12 h-12" />
-              )}
-          </CardContent>
-          <div className="p-2 border-t text-sm">
-            <p className="font-medium truncate">{file.name}</p>
-            <p className="text-xs text-muted-foreground">{file.type !== 'folder' ? formatSize(file.size) : '-'}</p>
-          </div>
-          <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>{renderActionsDropdown(file)}</div>
-      </Card>
-    ))}
     </div>
   );
   
+  const FileGridItem = ({ file, index }: { file: FileNode, index: number }) => (
+      <ContextMenu>
+          <ContextMenuTrigger asChild>
+              <Card
+                  data-selected={selection.has(file.id)}
+                  className="cursor-pointer group relative active:bg-secondary data-[selected=true]:bg-secondary data-[selected=true]:shadow-lg"
+                  onClick={(e) => handleItemClick(e, file, index)}
+                  onDoubleClick={() => handleDoubleClick(file)}
+              >
+                  <CardContent className="p-0 aspect-square flex flex-col items-center justify-center text-center">
+                      {file.type === 'image' && file.url ? (
+                          <Image src={file.url} alt={file.name} fill={true} objectFit="cover" className="rounded-t-lg" />
+                      ) : (
+                          <FileTypeIcon type={file.type} className="w-12 h-12" />
+                      )}
+                  </CardContent>
+                  <div className="p-2 border-t text-sm">
+                    <p className="font-medium truncate">{file.name}</p>
+                    <p className="text-xs text-muted-foreground">{file.type !== 'folder' ? formatSize(file.size) : '-'}</p>
+                  </div>
+                  <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>{renderActionsDropdown(file)}</div>
+              </Card>
+          </ContextMenuTrigger>
+          <ContextMenuContent>{renderContextMenuContent(file)}</ContextMenuContent>
+      </ContextMenu>
+  );
+
+  const renderGridView = () => (
+    <div onClick={handleContainerClick} className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4 p-4">
+    {isLoading ? Array(8).fill(0).map((_, i) => (
+      <Card key={i}><CardContent className="p-4 aspect-square flex flex-col items-center justify-center"><Skeleton className="h-12 w-12 mb-2" /><Skeleton className="h-4 w-20" /></CardContent></Card>
+    )) :
+    currentFiles.map((file, index) => <FileGridItem key={file.id} file={file} index={index}/>)
+    }
+    </div>
+  );
+  
+  const MobileListItem = ({ file }: { file: FileNode }) => (
+    <Card
+      data-selected={selection.has(file.id)}
+      className="active:bg-secondary data-[selected=true]:bg-secondary"
+      onClick={() => {
+        clearSelection();
+        handleDoubleClick(file);
+      }}
+      onLongPress={() => {
+        toggleSelection(file.id);
+      }}
+    >
+      <CardContent className="p-3 flex items-center justify-between">
+        <div className="flex items-center gap-3 overflow-hidden">
+          <FileTypeIcon type={file.type} />
+          <div className="flex flex-col overflow-hidden">
+            <span className="font-medium truncate">{file.name}</span>
+            <span className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(file.modifiedAt), { addSuffix: true })} {file.type !== 'folder' ? `• ${formatSize(file.size)}` : ''}</span>
+          </div>
+        </div>
+        <div onClick={(e) => e.stopPropagation()}>{renderActionsDropdown(file)}</div>
+      </CardContent>
+    </Card>
+  );
+
   const renderMobileView = () => (
     <ScrollArea className="h-full">
         <div className="p-4 grid gap-4">
         {isLoading ? Array(5).fill(0).map((_, i) => (
             <Card key={i}><CardContent className="p-3"><Skeleton className="h-12 w-full" /></CardContent></Card>
         )) :
-        currentFiles.map((file) => (
-            <Card key={file.id} onClick={() => handleFileClick(file)} className="active:bg-secondary">
-                <CardContent className="p-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3 overflow-hidden">
-                        <FileTypeIcon type={file.type} />
-                        <div className="flex flex-col overflow-hidden">
-                            <span className="font-medium truncate">{file.name}</span>
-                            <span className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(file.modifiedAt), { addSuffix: true })} {file.type !== 'folder' ? `• ${formatSize(file.size)}` : ''}</span>
-                        </div>
-                    </div>
-                    <div onClick={(e) => e.stopPropagation()}>{renderActionsDropdown(file)}</div>
-                </CardContent>
-            </Card>
-        ))}
+        currentFiles.map((file) => <MobileListItem key={file.id} file={file} />)
+        }
         </div>
     </ScrollArea>
   );
 
   return (
-    <div className="flex flex-col h-full bg-background text-foreground rounded-lg">
+    <div className="flex flex-col h-full bg-background text-foreground rounded-lg" onClick={(e) => handleContainerClick(e as any)}>
       <header className="p-4 border-b flex-shrink-0">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h1 className="text-2xl font-bold tracking-tight">FileSurfer</h1>
@@ -417,7 +548,7 @@ export function FileExplorer() {
         <div className="flex items-center gap-4">
         <div className="relative flex-grow">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search in this folder..." className="pl-9" value={searchTerm} onChange={(e) => search(e.target.value)} />
+          <Input placeholder="Search..." className="pl-9" value={searchTerm} onChange={(e) => search(e.target.value)} />
         </div>
         {!isMobile && (
           <ToggleGroup type="single" value={viewMode} onValueChange={(value) => value && setViewMode(value as ViewMode)} defaultValue="list">
@@ -486,7 +617,7 @@ export function FileExplorer() {
           <DialogHeader>
             <DialogTitle>Are you sure?</DialogTitle>
             <DialogDescription>
-              This will permanently delete "{actionNode?.name}". This action cannot be undone.
+               {selection.size > 1 ? `This will permanently delete ${selection.size} items. This action cannot be undone.` : `This will permanently delete "${actionNode?.name}". This action cannot be undone.`}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
