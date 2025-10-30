@@ -500,7 +500,7 @@ export function FileExplorer() {
 
   const renderMobileView = () => (
     <ScrollArea className="h-full">
-        <div className="p-4 grid gap-4">
+        <div className="p-4 grid gap-4" onClick={handleContainerClick}>
         {isLoading ? Array(5).fill(0).map((_, i) => (
             <Card key={i}><CardContent className="p-3"><Skeleton className="h-12 w-full" /></CardContent></Card>
         )) :
@@ -511,7 +511,7 @@ export function FileExplorer() {
   );
 
   return (
-    <div className="flex flex-col h-full bg-background text-foreground rounded-lg" onClick={(e) => handleContainerClick(e as any)}>
+    <div className="flex flex-col h-full bg-background text-foreground rounded-lg">
       <header className="p-4 border-b flex-shrink-0">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h1 className="text-2xl font-bold tracking-tight">FileSurfer</h1>
