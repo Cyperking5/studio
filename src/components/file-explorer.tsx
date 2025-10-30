@@ -473,191 +473,197 @@ export function FileExplorer() {
     </div>
   );
   
-  const MobileListItem = ({ file }: { file: FileNode }) => (
+  const MobileListItem = ({ file, index }: { file: FileNode, index: number }) => (
     <Card
       data-selected={selection.has(file.id)}
       className="active:bg-secondary data-[selected=true]:bg-secondary"
-      onClick={() => {
-        clearSelection();
-        handleDoubleClick(file);
+      onClick={(e) => {
+        if (selection.size > 0) {
+          handleItemClick(e, file, index);
+        }
       }}
+      onDoubleClick={() => handleDoubleClick(file)}
       onLongPress={() => {
-        toggleSelection(file.id);
+        if (!selection.has(file.id)) {
+            toggleSelection(file.id);
+        }
       }}
     >
       <CardContent className="p-3 flex items-center justify-between">
-        <div className="flex items-center gap-3 overflow-hidden">
+        <div className="flex items-center gap-3 overflow-hidden" onClick={() => selection.size === 0 && handleDoubleClick(file)}>
           <FileTypeIcon type={file.type} />
           <div className="flex flex-col overflow-hidden">
             <span className="font-medium truncate">{file.name}</span>
-            <span className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(file.modifiedAt), { addSuffix: true })} {file.type !== 'folder' ? `• ${formatSize(file.size)}` : ''}</span>
+            <span className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(file.modifiedAt), { addSuffix: true })}</span>
           </div>
         </div>
-        <div onClick={(e) => e.stopPropagation()}>{renderActionsDropdown(file)}</div>
+        {selection.size > 0 ? (
+          <div
+            className={cn("w-5 h-5 rounded-full border-2 flex items-center justify-center mr-2",
+                selection.has(file.id) ? "bg-primary border-primary-foreground" : "border-muted-foreground"
+            )}
+          >
+            {selection.has(file.id) && <div className="w-2 h-2 rounded-full bg-primary-foreground" />}
+          </div>
+        ) : (
+            <div onClick={(e) => e.stopPropagation()}>
+                {renderActionsDropdown(file)}
+            </div>
+        )}
       </CardContent>
     </Card>
   );
 
   const renderMobileView = () => (
-    <ScrollArea className="h-full">
-        <div className="p-4 grid gap-4" onClick={handleContainerClick}>
-        {isLoading ? Array(5).fill(0).map((_, i) => (
-            <Card key={i}><CardContent className="p-3"><Skeleton className="h-12 w-full" /></CardContent></Card>
-        )) :
-        currentFiles.map((file) => <MobileListItem key={file.id} file={file} />)
-        }
-        </div>
-    </ScrollArea>
+    <div className="p-4 space-y-2">
+    {isLoading ? Array(5).fill(0).map((_, i) => (
+      <Card key={i}>
+        <CardContent className="p-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+                <Skeleton className="h-8 w-8" />
+                <div className="space-y-1">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-3 w-24" />
+                </div>
+            </div>
+            <Skeleton className="h-8 w-8" />
+        </CardContent>
+      </Card>
+    )) :
+    currentFiles.map((file, index) => <MobileListItem key={file.id} file={file} index={index}/>)
+    }
+    </div>
   );
 
+  const ActionDialogContent = () => {
+    switch (actionType) {
+        case 'create-folder':
+        case 'create-file':
+        case 'rename':
+            return (
+            <>
+                <DialogHeader>
+                <DialogTitle>{actionType === 'rename' ? `Rename "${actionNode?.name}"` : actionType === 'create-folder' ? 'Create New Folder' : 'Create New File'}</DialogTitle>
+                </DialogHeader>
+                <div className="py-4">
+                <Input value={inputValue} onChange={e => setInputValue(e.target.value)} placeholder={actionType.includes('folder') ? 'Folder name' : 'File name'} />
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={closeActionDialog}>Cancel</Button>
+                    <Button onClick={handleAction}>Save</Button>
+                </DialogFooter>
+            </>
+            );
+        case 'delete':
+            return (
+            <>
+                <DialogHeader>
+                <DialogTitle>Are you sure?</DialogTitle>
+                <DialogDescription>
+                    {selection.size > 1 ? `This will permanently delete ${selection.size} items.` : `This will permanently delete "${actionNode?.name}".`} This action cannot be undone.
+                </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                    <Button variant="outline" onClick={closeActionDialog}>Cancel</Button>
+                    <Button variant="destructive" onClick={handleAction}>Delete</Button>
+                </DialogFooter>
+            </>
+            );
+        case 'move':
+            return (
+            <>
+                <DialogHeader>
+                <DialogTitle>Move "{actionNode?.name}"</DialogTitle>
+                </DialogHeader>
+                <div className="py-4 space-y-2">
+                    <p className="text-sm">Select a destination folder:</p>
+                    <select value={moveToPath} onChange={e => setMoveToPath(e.target.value)} className="w-full p-2 border rounded-md">
+                        {folderPaths.map(path => <option key={path} value={path}>{path}</option>)}
+                    </select>
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={closeActionDialog}>Cancel</Button>
+                    <Button onClick={handleAction}>Move</Button>
+                </DialogFooter>
+            </>
+            );
+        default: return null;
+    }
+  }
+
   return (
-    <div className="flex flex-col h-full bg-background text-foreground rounded-lg">
-      <header className="p-4 border-b flex-shrink-0">
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-          <h1 className="text-2xl font-bold tracking-tight">FileSurfer</h1>
-          <div className="flex items-center gap-2">
-            <ThemeToggle />
-            <AiSuggestionDialog />
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button>
-                  <Plus className="mr-2 h-4 w-4" /> New
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => openActionDialog('create-folder', null)}>
-                  <Folder className="mr-2 h-4 w-4" /> New Folder
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => openActionDialog('create-file', null)}>
-                  <FileIcon className="mr-2 h-4 w-4" /> New File
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
-                  <Upload className="mr-2 h-4 w-4" /> Upload File
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileUpload}
-              className="hidden"
-            />
+    <div className="h-full w-full flex flex-col bg-background text-foreground">
+      <header className="flex-shrink-0 flex items-center justify-between p-2 md:p-4 border-b">
+        <div className="flex-1 min-w-0">
+          {!isMobile && renderBreadcrumbs()}
+          {isMobile && <h1 className="text-lg font-bold">FileSurfer</h1>}
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input type="search" placeholder="Search..." className="pl-9 w-40 md:w-64" value={searchTerm} onChange={e => search(e.target.value)} />
           </div>
-        </div>
-        <div className="flex items-center gap-4">
-        <div className="relative flex-grow">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search..." className="pl-9" value={searchTerm} onChange={(e) => search(e.target.value)} />
-        </div>
-        {!isMobile && (
-          <ToggleGroup type="single" value={viewMode} onValueChange={(value) => value && setViewMode(value as ViewMode)} defaultValue="list">
-              <ToggleGroupItem value="list" aria-label="List view">
-                  <List className="h-4 w-4" />
-              </ToggleGroupItem>
-              <ToggleGroupItem value="grid" aria-label="Grid view">
-                  <LayoutGrid className="h-4 w-4" />
-              </ToggleGroupItem>
-          </ToggleGroup>
-        )}
+          <AiSuggestionDialog />
+          <ThemeToggle />
         </div>
       </header>
-      
-      <nav className="p-4 border-b flex-shrink-0">
-        {renderBreadcrumbs()}
-      </nav>
 
-      <div className="flex-grow overflow-hidden">
-        <ScrollArea className="h-full">
-            {isMobile ? renderMobileView() : (viewMode === 'list' ? renderListView() : renderGridView())}
-        </ScrollArea>
+      <div className="flex-shrink-0 flex items-center justify-between p-2 md:p-4 border-b">
+        <div className="flex items-center gap-2">
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="outline"><Plus className="h-4 w-4 mr-2" /> New</Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                    <DropdownMenuItem onClick={() => openActionDialog('create-folder', null)}>New Folder</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => openActionDialog('create-file', null)}>New File</DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+            <Button variant="outline" onClick={() => fileInputRef.current?.click()}><Upload className="h-4 w-4 mr-2"/> Upload</Button>
+            <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
+
+             {selection.size > 0 && (
+                <Button variant="destructive" size="sm" onClick={() => openActionDialog('delete', null)}>
+                    <Trash2 className="mr-2 h-4 w-4" /> Delete ({selection.size})
+                </Button>
+            )}
+        </div>
+        {!isMobile && (
+        <ToggleGroup type="single" value={viewMode} onValueChange={(value) => value && setViewMode(value as ViewMode)}>
+            <ToggleGroupItem value="list" aria-label="List view"><List className="h-4 w-4"/></ToggleGroupItem>
+            <ToggleGroupItem value="grid" aria-label="Grid view"><LayoutGrid className="h-4 w-4"/></ToggleGroupItem>
+        </ToggleGroup>
+        )}
       </div>
 
-      <Dialog open={!!actionType && ['create-folder', 'create-file', 'rename'].includes(actionType as string)} onOpenChange={(isOpen) => !isOpen && closeActionDialog()}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>
-                {actionType === 'create-folder' && 'Create New Folder'}
-                {actionType === 'create-file' && 'Create New File'}
-                {actionType === 'rename' && `Rename "${actionNode?.name}"`}
-              </DialogTitle>
-            </DialogHeader>
-            <Input value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder="Enter name..." onKeyDown={(e) => e.key === 'Enter' && handleAction()} />
-            <DialogFooter>
-              <Button variant="outline" onClick={closeActionDialog}>Cancel</Button>
-              <Button onClick={handleAction}>Confirm</Button>
-            </DialogFooter>
-          </DialogContent>
+      <ScrollArea className="flex-1">
+        {isMobile ? renderMobileView() : viewMode === 'grid' ? renderGridView() : renderListView()}
+      </ScrollArea>
+      
+      <Dialog open={!!actionType} onOpenChange={(open) => !open && closeActionDialog()}>
+        <DialogContent>
+            <ActionDialogContent />
+        </DialogContent>
       </Dialog>
       
-       <Dialog open={actionType === 'move'} onOpenChange={(isOpen) => !isOpen && closeActionDialog()}>
-        <DialogContent>
+      <Dialog open={!!previewFile} onOpenChange={(open) => !open && setPreviewFile(null)}>
+        <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col">
             <DialogHeader>
-                <DialogTitle>Move "{actionNode?.name}"</DialogTitle>
+                <DialogTitle>{previewFile?.name}</DialogTitle>
+                <DialogDescription>{previewFile?.type} - {formatSize(previewFile?.size || 0)}</DialogDescription>
             </DialogHeader>
-            <div>
-                <p className="mb-2 text-sm text-muted-foreground">Select destination folder:</p>
-                <ScrollArea className="h-40 border rounded-md">
-                    <div className="p-2">
-                    {folderPaths.map(path => (
-                       <button key={path} onClick={() => setMoveToPath(path)} className={`w-full text-left p-2 rounded-md ${moveToPath === path ? 'bg-primary/20' : 'hover:bg-secondary'}`}>{path}</button>
-                    ))}
-                    </div>
-                </ScrollArea>
+            <div className="flex-1 overflow-auto my-4">
+                {previewFile?.type === 'image' && previewFile.url && <Image src={previewFile.url} alt={previewFile.name} width={1200} height={800} className="w-full h-auto object-contain" />}
+                {previewFile?.type === 'text' && <pre className="text-sm whitespace-pre-wrap">{previewFile.content}</pre>}
+                 {previewFile?.type === 'pdf' && <p className="text-center text-muted-foreground p-8">PDF preview is not yet implemented.</p>}
             </div>
             <DialogFooter>
-                <Button variant="outline" onClick={closeActionDialog}>Cancel</Button>
-                <Button onClick={handleAction} disabled={!moveToPath}>Move</Button>
+                <Button onClick={() => setPreviewFile(null)}>Close</Button>
             </DialogFooter>
-        </DialogContent>
-       </Dialog>
-      
-      <Dialog open={actionType === 'delete'} onOpenChange={(isOpen) => !isOpen && closeActionDialog()}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Are you sure?</DialogTitle>
-            <DialogDescription>
-               {selection.size > 1 ? `This will permanently delete ${selection.size} items. This action cannot be undone.` : `This will permanently delete "${actionNode?.name}". This action cannot be undone.`}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={closeActionDialog}>Cancel</Button>
-            <Button variant="destructive" onClick={handleAction}>Delete</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      
-      <Dialog open={!!previewFile} onOpenChange={() => setPreviewFile(null)}>
-        <DialogContent className="max-w-3xl w-full h-[80vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>{previewFile?.name}</DialogTitle>
-            <DialogDescription>
-              {previewFile?.type} • {formatSize(previewFile?.size || 0)}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex-grow overflow-auto my-4 rounded-md border bg-secondary/50">
-            {previewFile?.type === 'image' && previewFile.url && (
-              <div className="relative w-full h-full">
-                <Image src={previewFile.url} alt={previewFile.name} fill={true} objectFit="contain" />
-              </div>
-            )}
-            {previewFile?.type === 'text' && (
-              <ScrollArea className="w-full h-full p-4">
-                  <pre className="text-sm whitespace-pre-wrap">{previewFile.content}</pre>
-              </ScrollArea>
-            )}
-            {previewFile?.type === 'pdf' && (
-              <div className="flex items-center justify-center h-full flex-col gap-4 text-muted-foreground">
-                <FileText className="w-16 h-16"/>
-                <p>PDF preview is not available in this demo.</p>
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPreviewFile(null)}>Close</Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
   );
 }
+
+    
