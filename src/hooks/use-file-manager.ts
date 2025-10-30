@@ -98,22 +98,25 @@ export function useFileManager() {
       modifiedAt: new Date(file.lastModified).toISOString(),
       size: file.size,
     };
-
-    if (fileType === 'image' || fileType === 'text') {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const result = e.target?.result as string;
-            setFiles(produce(draft => {
-                const node = draft.get(newNode.id);
-                if (node) {
-                    if (fileType === 'image') {
-                        node.url = result;
-                    } else if (fileType === 'text') {
-                        node.content = result;
-                    }
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const result = e.target?.result as string;
+        setFiles(produce(draft => {
+            const createdNode = draft.get(newNode.id);
+            if(createdNode) {
+                if (fileType === 'image') {
+                    createdNode.url = result;
+                } else if (fileType === 'text') {
+                    createdNode.content = result.split(',')[1] ? atob(result.split(',')[1]) : '';
                 }
-            }));
-        };
+            }
+        }));
+    };
+
+    if (fileType === 'image') {
+        reader.readAsDataURL(file);
+    } else if (fileType === 'text') {
         reader.readAsDataURL(file);
     }
     
@@ -163,19 +166,21 @@ export function useFileManager() {
         const node = draft.get(id);
         if (!node) return;
 
-        const nodesToDelete = [id];
+        const nodesToDelete = new Set<string>();
+        nodesToDelete.add(id);
+
         if (node.type === 'folder') {
-            const findChildren = (folderPath: string) => {
+            const findChildrenRecursive = (folderPath: string) => {
                 for (const file of draft.values()) {
-                    if (file.path.startsWith(folderPath + '/')) {
-                        nodesToDelete.push(file.id);
+                    if (file.parentId === node.id || file.path.startsWith(folderPath + '/')) {
+                        nodesToDelete.add(file.id);
                         if (file.type === 'folder') {
-                            findChildren(file.path);
+                            findChildrenRecursive(file.path);
                         }
                     }
                 }
-            }
-            findChildren(node.path);
+            };
+            findChildrenRecursive(node.path);
         }
         
         nodesToDelete.forEach(deleteId => draft.delete(deleteId));
@@ -187,19 +192,27 @@ export function useFileManager() {
         const node = draft.get(id);
         if (!node) return;
         
-        const parentNode = findNodeByPath(draft, newParentPath);
-        if (newParentPath !== '/' && !parentNode) {
-            throw new Error("Destination folder does not exist.");
+        let parentNode: FileNode | null = null;
+        if (newParentPath !== '/') {
+            for(const file of draft.values()) {
+                if(file.path === newParentPath) {
+                    parentNode = file;
+                    break;
+                }
+            }
+            if (!parentNode) throw new Error("Destination folder does not exist.");
         }
 
-        if (newParentPath.startsWith(node.path)) {
+        if (node.type === 'folder' && newParentPath.startsWith(node.path)) {
             throw new Error("Cannot move a folder into itself.");
         }
 
         const newPath = newParentPath === '/' ? `/${node.name}` : `${newParentPath}/${node.name}`;
         
-        if (findNodeByPath(draft, newPath)) {
-            throw new Error(`An item named "${node.name}" already exists in the destination.`);
+        for(const file of draft.values()){
+            if(file.path === newPath) {
+                 throw new Error(`An item named "${node.name}" already exists in the destination.`);
+            }
         }
         
         const oldPath = node.path;
