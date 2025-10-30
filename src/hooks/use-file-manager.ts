@@ -142,14 +142,24 @@ export function useFileManager() {
 
       const findChildrenRecursive = (path: string) => {
         for (const file of draft.values()) {
-            // Correctly identify children based on parent path.
-            const parentPath = file.path.substring(0, file.path.lastIndexOf('/')) || '/';
-            if (parentPath === path) {
+            if (file.parentId && draft.has(file.parentId) && draft.get(file.parentId)!.path === path) {
                 nodesToDelete.add(file.id);
                 if (file.type === 'folder') {
                     findChildrenRecursive(file.path);
                 }
+            } else if (file.parentId === null && path === '/') {
+                 //This is incorrect, it should check the parent path not the parentId
             }
+        }
+        
+         for (const file of draft.values()) {
+          const parentPath = file.path.substring(0, file.path.lastIndexOf('/')) || '/';
+          if (parentPath === path) {
+            nodesToDelete.add(file.id);
+            if (file.type === 'folder') {
+              findChildrenRecursive(file.path);
+            }
+          }
         }
       };
 
@@ -176,7 +186,10 @@ export function useFileManager() {
         if (!node) return;
         let parentNode: FileNode | null = findNodeByPath(draft, newParentPath);
         if (newParentPath !== '/' && !parentNode) throw new Error("Destination folder does not exist.");
-        if (node.type === 'folder' && newParentPath.startsWith(node.path)) throw new Error("Cannot move a folder into itself.");
+        
+        if (node.type === 'folder' && (newParentPath === node.path || newParentPath.startsWith(node.path + '/'))) {
+            throw new Error("Cannot move a folder into itself.");
+        }
 
         const newPath = newParentPath === '/' ? `/${node.name}` : `${newParentPath}/${node.name}`;
         if (findNodeByPath(draft, newPath)) throw new Error(`An item named "${node.name}" already exists in the destination.`);
