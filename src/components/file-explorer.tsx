@@ -60,6 +60,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { AiSuggestionDialog } from './ai-suggestion-dialog';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { cn } from '@/lib/utils';
 
 type ActionType = 'create-folder' | 'create-file' | 'rename' | 'delete' | 'move';
 type ViewMode = 'list' | 'grid';
@@ -202,7 +203,7 @@ export function FileExplorer() {
             <React.Fragment key={path}>
               <Button
                 variant="link"
-                className={isLast ? "font-semibold text-foreground px-1" : "px-1"}
+                className={cn(isLast ? "font-semibold text-foreground px-1" : "px-1")}
                 onClick={() => !isLast && changeDirectory(path)}
               >
                 {part}
@@ -415,36 +416,44 @@ export function FileExplorer() {
         </ScrollArea>
       </div>
 
-      <Dialog open={!!actionType && ['create-folder', 'create-file', 'rename', 'move'].includes(actionType)} onOpenChange={(isOpen) => !isOpen && closeActionDialog()}>
+      <Dialog open={!!actionType && ['create-folder', 'create-file', 'rename'].includes(actionType)} onOpenChange={(isOpen) => !isOpen && closeActionDialog()}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>
                 {actionType === 'create-folder' && 'Create New Folder'}
                 {actionType === 'create-file' && 'Create New File'}
                 {actionType === 'rename' && 'Rename Item'}
-                {actionType === 'move' && `Move "${actionNode?.name}"`}
               </DialogTitle>
             </DialogHeader>
-            {actionType === 'move' ? (
-                <div>
-                    <p className="mb-2 text-sm text-muted-foreground">Select destination folder:</p>
-                    <ScrollArea className="h-40 border rounded-md">
-                        <div className="p-2">
-                        {getFolderPath().map(path => (
-                           <button key={path} onClick={() => setMoveToPath(path)} className={`w-full text-left p-2 rounded-md ${moveToPath === path ? 'bg-primary/20' : 'hover:bg-secondary'}`}>{path}</button>
-                        ))}
-                        </div>
-                    </ScrollArea>
-                </div>
-            ) : (
-                <Input value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder="Enter name..." />
-            )}
+            <Input value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder="Enter name..." />
             <DialogFooter>
               <Button variant="outline" onClick={closeActionDialog}>Cancel</Button>
               <Button onClick={handleAction}>Confirm</Button>
             </DialogFooter>
           </DialogContent>
       </Dialog>
+      
+       <Dialog open={actionType === 'move'} onOpenChange={(isOpen) => !isOpen && closeActionDialog()}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Move "{actionNode?.name}"</DialogTitle>
+            </DialogHeader>
+            <div>
+                <p className="mb-2 text-sm text-muted-foreground">Select destination folder:</p>
+                <ScrollArea className="h-40 border rounded-md">
+                    <div className="p-2">
+                    {getFolderPath().map(path => (
+                       <button key={path} onClick={() => setMoveToPath(path)} className={`w-full text-left p-2 rounded-md ${moveToPath === path ? 'bg-primary/20' : 'hover:bg-secondary'}`}>{path}</button>
+                    ))}
+                    </div>
+                </ScrollArea>
+            </div>
+            <DialogFooter>
+                <Button variant="outline" onClick={closeActionDialog}>Cancel</Button>
+                <Button onClick={handleAction}>Move</Button>
+            </DialogFooter>
+        </DialogContent>
+       </Dialog>
       
       <Dialog open={actionType === 'delete'} onOpenChange={(isOpen) => !isOpen && closeActionDialog()}>
         <DialogContent>
@@ -495,5 +504,3 @@ export function FileExplorer() {
     </div>
   );
 }
-
-    
