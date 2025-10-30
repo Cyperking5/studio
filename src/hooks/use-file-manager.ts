@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { initialFiles } from '@/lib/data';
 import type { FileNode, FileType, SortConfig } from '@/lib/types';
 import { produce } from 'immer';
@@ -175,7 +175,7 @@ export function useFileManager() {
     }));
   }
 
-  const getFolderPath = useCallback(() => {
+  const getFolderPath = () => {
     const folderPaths = ['/'];
     for(const file of files.values()){
         if(file.type === 'folder'){
@@ -183,7 +183,7 @@ export function useFileManager() {
         }
     }
     return folderPaths.sort();
-  }, [files]);
+  };
   
   const currentFiles = useMemo(() => {
     const filesInCurrentDir = Array.from(files.values()).filter(file => {
@@ -234,5 +234,3 @@ searchTerm,
     setSortConfig,
   };
 }
-
-    
