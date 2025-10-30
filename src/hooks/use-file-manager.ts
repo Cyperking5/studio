@@ -136,29 +136,33 @@ export function useFileManager() {
   
   const deleteNodes = useCallback((ids: string[]) => {
     setFiles(produce(draft => {
-        const nodesToDelete = new Set<string>(ids);
+      const nodesToDelete = new Set<string>();
 
-        ids.forEach(id => {
-            const node = draft.get(id);
-            if (!node || node.type !== 'folder') return;
-            
-            const findChildrenRecursive = (folderPath: string) => {
-                for (const file of draft.values()) {
-                    if (file.path.startsWith(folderPath + '/') && file.id !== id) {
-                        nodesToDelete.add(file.id);
-                        if (file.type === 'folder') {
-                            findChildrenRecursive(file.path);
-                        }
-                    }
-                }
-            };
-            findChildrenRecursive(node.path);
-        });
+      const findChildrenRecursive = (path: string) => {
+        for (const file of draft.values()) {
+          if (file.parentId && draft.get(file.parentId)?.path === path) {
+            nodesToDelete.add(file.id);
+            if (file.type === 'folder') {
+              findChildrenRecursive(file.path);
+            }
+          }
+        }
+      };
 
-        nodesToDelete.forEach(deleteId => draft.delete(deleteId));
+      for (const id of ids) {
+        nodesToDelete.add(id);
+        const node = draft.get(id);
+        if (node && node.type === 'folder') {
+          findChildrenRecursive(node.path);
+        }
+      }
+
+      for (const id of nodesToDelete) {
+        draft.delete(id);
+      }
     }));
     clearSelection();
-  }, []);
+  }, [setFiles]);
 
   const moveNode = (id: string, newParentPath: string) => {
     setFiles(produce(draft => {
