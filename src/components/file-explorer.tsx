@@ -240,7 +240,6 @@ export function FileExplorer() {
   const folderPaths = useMemo(() => getFolderPath(), [getFolderPath]);
   
   const handleContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    // If click is on the container itself and not on a file/folder item
     if (e.target === e.currentTarget) {
         clearSelection();
         setLastSelectedIndex(null);
@@ -482,15 +481,19 @@ export function FileExplorer() {
           handleItemClick(e, file, index);
         }
       }}
-      onDoubleClick={() => handleDoubleClick(file)}
       onLongPress={() => {
         if (!selection.has(file.id)) {
-            toggleSelection(file.id);
+          toggleSelection(file.id);
         }
       }}
     >
       <CardContent className="p-3 flex items-center justify-between">
-        <div className="flex items-center gap-3 overflow-hidden" onClick={() => selection.size === 0 && handleDoubleClick(file)}>
+        <div className="flex items-center gap-3 overflow-hidden" onClick={(e) => {
+          if (selection.size === 0) {
+            e.stopPropagation();
+            handleDoubleClick(file);
+          }
+        }}>
           <FileTypeIcon type={file.type} />
           <div className="flex flex-col overflow-hidden">
             <span className="font-medium truncate">{file.name}</span>
@@ -655,7 +658,8 @@ export function FileExplorer() {
             <div className="flex-1 overflow-auto my-4">
                 {previewFile?.type === 'image' && previewFile.url && <Image src={previewFile.url} alt={previewFile.name} width={1200} height={800} className="w-full h-auto object-contain" />}
                 {previewFile?.type === 'text' && <pre className="text-sm whitespace-pre-wrap">{previewFile.content}</pre>}
-                 {previewFile?.type === 'pdf' && <p className="text-center text-muted-foreground p-8">PDF preview is not yet implemented.</p>}
+                {previewFile?.type === 'pdf' && previewFile.url && <iframe src={previewFile.url} className="w-full h-full" />}
+                {previewFile?.type === 'pdf' && !previewFile.url && <p className="text-center text-muted-foreground p-8">PDF preview is not yet implemented.</p>}
             </div>
             <DialogFooter>
                 <Button onClick={() => setPreviewFile(null)}>Close</Button>
@@ -665,5 +669,3 @@ export function FileExplorer() {
     </div>
   );
 }
-
-    
