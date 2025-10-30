@@ -302,7 +302,7 @@ export function FileExplorer() {
                 navigator.share({
                     title: node.name,
                     text: `Check out this file: ${node.name}`,
-                }).catch((error) => console.error('Error sharing:', error));
+                }).catch(() => toast({variant: "destructive", title: "Sharing failed", description: "Could not share the file at this time."}));
             } else {
                 toast({title: "Share not supported on this browser."})
             }
@@ -355,7 +355,7 @@ export function FileExplorer() {
                 navigator.share({
                     title: node.name,
                     text: `Check out this file: ${node.name}`,
-                }).catch((error) => console.error('Error sharing:', error));
+                }).catch(() => toast({variant: "destructive", title: "Sharing failed", description: "Could not share the file at this time."}));
             } else {
                 toast({title: "Share not supported on this browser."})
             }
