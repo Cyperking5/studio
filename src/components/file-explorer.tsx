@@ -22,7 +22,7 @@ import {
   List,
   Upload,
 } from 'lucide-react';
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { useFileManager } from '@/hooks/use-file-manager';
 import { useIsMobile } from '@/hooks/use-mobile';
 import type { FileNode, FileType, SortConfig } from '@/lib/types';
@@ -100,13 +100,13 @@ export function FileExplorer() {
     deleteNode,
     renameNode,
     moveNode,
-    getFolderPath,
     search,
     searchTerm,
     isLoading,
     sortConfig,
     setSortConfig,
     uploadFile,
+    getFolderPath,
   } = useFileManager();
   const isMobile = useIsMobile();
   const { toast } = useToast();
@@ -123,7 +123,10 @@ export function FileExplorer() {
     setActionType(type);
     setActionNode(node);
     setInputValue(node?.name || '');
-    if (type === 'move') setMoveToPath(currentPath);
+    if (type === 'move' && node) {
+      const parentPath = node.path.substring(0, node.path.lastIndexOf('/')) || '/';
+      setMoveToPath(parentPath);
+    }
   };
   
   const closeActionDialog = () => {
@@ -208,6 +211,8 @@ export function FileExplorer() {
     });
   };
 
+  const folderPaths = useMemo(() => getFolderPath(), [getFolderPath]);
+
   const renderBreadcrumbs = () => (
     <div className="flex items-center gap-1 text-sm text-muted-foreground flex-wrap">
       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => changeDirectory('/')}>
@@ -224,7 +229,7 @@ export function FileExplorer() {
             <React.Fragment key={path}>
               <Button
                 variant="link"
-                className={cn(isLast ? "font-semibold text-foreground px-1" : "px-1")}
+                className={cn("text-base h-auto p-0", isLast ? "font-semibold text-foreground" : "")}
                 onClick={() => !isLast && changeDirectory(path)}
               >
                 {part}
@@ -250,21 +255,10 @@ export function FileExplorer() {
           <span>Rename</span>
         </DropdownMenuItem>
         
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger>
+        <DropdownMenuItem onClick={() => openActionDialog('move', node)}>
             <Move className="mr-2 h-4 w-4" />
             <span>Move to</span>
-          </DropdownMenuSubTrigger>
-          <DropdownMenuPortal>
-            <DropdownMenuSubContent>
-                {getFolderPath().map(folderPath => (
-                    <DropdownMenuItem key={folderPath} onClick={() => { openActionDialog('move', node); setMoveToPath(folderPath)}}>
-                        {folderPath}
-                    </DropdownMenuItem>
-                ))}
-            </DropdownMenuSubContent>
-          </DropdownMenuPortal>
-        </DropdownMenuSub>
+        </DropdownMenuItem>
 
         <DropdownMenuItem onClick={() => {
             if (navigator.share) {
@@ -279,7 +273,7 @@ export function FileExplorer() {
           <Share2 className="mr-2 h-4 w-4" />
           <span>Share</span>
         </DropdownMenuItem>
-        <DropdownMenuItem>
+        <DropdownMenuItem onClick={() => toast({title: "Copy not implemented."})}>
           <Copy className="mr-2 h-4 w-4" />
           <span>Copy</span>
         </DropdownMenuItem>
@@ -314,7 +308,7 @@ export function FileExplorer() {
       <TableBody>
         {isLoading ? Array(5).fill(0).map((_, i) => (
           <TableRow key={i}>
-              <TableCell><Skeleton className="h-5 w-48" /></TableCell>
+              <TableCell><div className="flex items-center gap-3"><Skeleton className="h-5 w-5" /><Skeleton className="h-5 w-48" /></div></TableCell>
               <TableCell><Skeleton className="h-5 w-32" /></TableCell>
               <TableCell><Skeleton className="h-5 w-20" /></TableCell>
               <TableCell></TableCell>
@@ -340,20 +334,20 @@ export function FileExplorer() {
   const renderGridView = () => (
     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4 p-4">
     {isLoading ? Array(8).fill(0).map((_, i) => (
-      <Card key={i}><CardContent className="p-4"><Skeleton className="h-24 w-full" /></CardContent></Card>
+      <Card key={i}><CardContent className="p-4 aspect-square flex flex-col items-center justify-center"><Skeleton className="h-12 w-12 mb-2" /><Skeleton className="h-4 w-20" /></CardContent></Card>
     )) :
     currentFiles.map((file) => (
       <Card key={file.id} onDoubleClick={() => handleFileClick(file)} className="cursor-pointer group relative active:bg-secondary" onClick={() => handleFileClick(file)}>
           <CardContent className="p-0 aspect-square flex flex-col items-center justify-center text-center">
               {file.type === 'image' && file.url ? (
-                  <Image src={file.url} alt={file.name} layout="fill" objectFit="cover" className="rounded-t-lg" />
+                  <Image src={file.url} alt={file.name} fill={true} objectFit="cover" className="rounded-t-lg" />
               ) : (
                   <FileTypeIcon type={file.type} className="w-12 h-12" />
               )}
           </CardContent>
           <div className="p-2 border-t text-sm">
             <p className="font-medium truncate">{file.name}</p>
-            <p className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(file.modifiedAt), { addSuffix: true })}</p>
+            <p className="text-xs text-muted-foreground">{file.type !== 'folder' ? formatSize(file.size) : '-'}</p>
           </div>
           <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>{renderActionsDropdown(file)}</div>
       </Card>
@@ -365,7 +359,7 @@ export function FileExplorer() {
     <ScrollArea className="h-full">
         <div className="p-4 grid gap-4">
         {isLoading ? Array(5).fill(0).map((_, i) => (
-            <Card key={i}><CardContent className="p-4"><Skeleton className="h-12 w-full" /></CardContent></Card>
+            <Card key={i}><CardContent className="p-3"><Skeleton className="h-12 w-full" /></CardContent></Card>
         )) :
         currentFiles.map((file) => (
             <Card key={file.id} onClick={() => handleFileClick(file)} className="active:bg-secondary">
@@ -399,7 +393,7 @@ export function FileExplorer() {
                   <Plus className="mr-2 h-4 w-4" /> New
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent>
+              <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={() => openActionDialog('create-folder', null)}>
                   <Folder className="mr-2 h-4 w-4" /> New Folder
                 </DropdownMenuItem>
@@ -448,16 +442,16 @@ export function FileExplorer() {
         </ScrollArea>
       </div>
 
-      <Dialog open={!!actionType && ['create-folder', 'create-file', 'rename'].includes(actionType)} onOpenChange={(isOpen) => !isOpen && closeActionDialog()}>
+      <Dialog open={!!actionType && ['create-folder', 'create-file', 'rename'].includes(actionType as string)} onOpenChange={(isOpen) => !isOpen && closeActionDialog()}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>
                 {actionType === 'create-folder' && 'Create New Folder'}
                 {actionType === 'create-file' && 'Create New File'}
-                {actionType === 'rename' && 'Rename Item'}
+                {actionType === 'rename' && `Rename "${actionNode?.name}"`}
               </DialogTitle>
             </DialogHeader>
-            <Input value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder="Enter name..." />
+            <Input value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder="Enter name..." onKeyDown={(e) => e.key === 'Enter' && handleAction()} />
             <DialogFooter>
               <Button variant="outline" onClick={closeActionDialog}>Cancel</Button>
               <Button onClick={handleAction}>Confirm</Button>
@@ -474,7 +468,7 @@ export function FileExplorer() {
                 <p className="mb-2 text-sm text-muted-foreground">Select destination folder:</p>
                 <ScrollArea className="h-40 border rounded-md">
                     <div className="p-2">
-                    {getFolderPath().map(path => (
+                    {folderPaths.map(path => (
                        <button key={path} onClick={() => setMoveToPath(path)} className={`w-full text-left p-2 rounded-md ${moveToPath === path ? 'bg-primary/20' : 'hover:bg-secondary'}`}>{path}</button>
                     ))}
                     </div>
@@ -482,7 +476,7 @@ export function FileExplorer() {
             </div>
             <DialogFooter>
                 <Button variant="outline" onClick={closeActionDialog}>Cancel</Button>
-                <Button onClick={handleAction}>Move</Button>
+                <Button onClick={handleAction} disabled={!moveToPath}>Move</Button>
             </DialogFooter>
         </DialogContent>
        </Dialog>
@@ -536,5 +530,3 @@ export function FileExplorer() {
     </div>
   );
 }
-
-    

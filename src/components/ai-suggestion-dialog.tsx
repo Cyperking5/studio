@@ -54,14 +54,23 @@ export function AiSuggestionDialog() {
   const onSubmit = (values: AiSuggestionFormValues) => {
     setSuggestion(null);
     startTransition(async () => {
-      const result = await suggestFileLocation(values);
-      if (result) {
-        setSuggestion(result);
-      } else {
+      try {
+        const result = await suggestFileLocation(values);
+        if (result) {
+          setSuggestion(result);
+        } else {
+          toast({
+              variant: "destructive",
+              title: "Error",
+              description: "Failed to get suggestion. Please try again.",
+          });
+        }
+      } catch (error) {
+        console.error("AI Suggestion Error:", error);
         toast({
-            variant: "destructive",
-            title: "Error",
-            description: "Failed to get suggestion. Please try again.",
+          variant: "destructive",
+          title: "Error",
+          description: "An unexpected error occurred. Please try again.",
         });
       }
     });
