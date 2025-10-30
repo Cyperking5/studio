@@ -355,7 +355,7 @@ export function FileExplorer() {
         {isMobile ? renderMobileView() : renderDesktopView()}
       </div>
 
-      <Dialog open={!!actionType && ['create-folder', 'create-file', 'rename', 'move'].includes(actionType)} onOpenChange={!open ? closeActionDialog : undefined}>
+      <Dialog open={!!actionType && ['create-folder', 'create-file', 'rename', 'move'].includes(actionType)} onOpenChange={(isOpen) => !isOpen && closeActionDialog()}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>
@@ -386,7 +386,7 @@ export function FileExplorer() {
           </DialogContent>
       </Dialog>
       
-      <Dialog open={actionType === 'delete'} onOpenChange={!open ? closeActionDialog : undefined}>
+      <Dialog open={actionType === 'delete'} onOpenChange={(isOpen) => !isOpen && closeActionDialog()}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Are you sure?</DialogTitle>
