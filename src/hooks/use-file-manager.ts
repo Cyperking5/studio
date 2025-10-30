@@ -3,7 +3,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { initialFiles } from '@/lib/data';
 import type { FileNode, FileType, SortConfig } from '@/lib/types';
-import { produce } from 'immer';
+import { produce, enableMapSet } from 'immer';
+
+enableMapSet();
 
 const findNodeByPath = (files: Map<string, FileNode>, path: string): FileNode | null => {
     if (path === '/') return null;
@@ -140,20 +142,24 @@ export function useFileManager() {
 
       const findChildrenRecursive = (path: string) => {
         for (const file of draft.values()) {
-          if (file.parentId && draft.get(file.parentId)?.path === path) {
-            nodesToDelete.add(file.id);
-            if (file.type === 'folder') {
-              findChildrenRecursive(file.path);
+            // Correctly identify children based on parent path.
+            const parentPath = file.path.substring(0, file.path.lastIndexOf('/')) || '/';
+            if (parentPath === path) {
+                nodesToDelete.add(file.id);
+                if (file.type === 'folder') {
+                    findChildrenRecursive(file.path);
+                }
             }
-          }
         }
       };
 
       for (const id of ids) {
-        nodesToDelete.add(id);
         const node = draft.get(id);
-        if (node && node.type === 'folder') {
-          findChildrenRecursive(node.path);
+        if (node) {
+            nodesToDelete.add(id);
+            if (node.type === 'folder') {
+              findChildrenRecursive(node.path);
+            }
         }
       }
 
@@ -162,7 +168,7 @@ export function useFileManager() {
       }
     }));
     clearSelection();
-  }, [setFiles]);
+  }, []);
 
   const moveNode = (id: string, newParentPath: string) => {
     setFiles(produce(draft => {
