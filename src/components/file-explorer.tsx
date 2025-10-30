@@ -240,6 +240,7 @@ export function FileExplorer() {
   const folderPaths = useMemo(() => getFolderPath(), [getFolderPath]);
   
   const handleContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Only clear selection if the click is on the container itself, not on a child
     if (e.target === e.currentTarget) {
         clearSelection();
         setLastSelectedIndex(null);
@@ -446,7 +447,7 @@ export function FileExplorer() {
               >
                   <CardContent className="p-0 aspect-square flex flex-col items-center justify-center text-center">
                       {file.type === 'image' && file.url ? (
-                          <Image src={file.url} alt={file.name} fill={true} objectFit="cover" className="rounded-t-lg" />
+                          <Image src={file.url} alt={file.name} fill={true} style={{objectFit:"cover"}} className="rounded-t-lg" />
                       ) : (
                           <FileTypeIcon type={file.type} className="w-12 h-12" />
                       )}
@@ -479,21 +480,19 @@ export function FileExplorer() {
       onClick={(e) => {
         if (selection.size > 0) {
           handleItemClick(e, file, index);
+        } else {
+          handleDoubleClick(file);
         }
       }}
       onLongPress={() => {
         if (!selection.has(file.id)) {
+          clearSelection();
           toggleSelection(file.id);
         }
       }}
     >
       <CardContent className="p-3 flex items-center justify-between">
-        <div className="flex items-center gap-3 overflow-hidden" onClick={(e) => {
-          if (selection.size === 0) {
-            e.stopPropagation();
-            handleDoubleClick(file);
-          }
-        }}>
+        <div className="flex items-center gap-3 overflow-hidden">
           <FileTypeIcon type={file.type} />
           <div className="flex flex-col overflow-hidden">
             <span className="font-medium truncate">{file.name}</span>
