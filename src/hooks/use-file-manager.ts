@@ -142,17 +142,6 @@ export function useFileManager() {
 
       const findChildrenRecursive = (path: string) => {
         for (const file of draft.values()) {
-            if (file.parentId && draft.has(file.parentId) && draft.get(file.parentId)!.path === path) {
-                nodesToDelete.add(file.id);
-                if (file.type === 'folder') {
-                    findChildrenRecursive(file.path);
-                }
-            } else if (file.parentId === null && path === '/') {
-                 //This is incorrect, it should check the parent path not the parentId
-            }
-        }
-        
-         for (const file of draft.values()) {
           const parentPath = file.path.substring(0, file.path.lastIndexOf('/')) || '/';
           if (parentPath === path) {
             nodesToDelete.add(file.id);
