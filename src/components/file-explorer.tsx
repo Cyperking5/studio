@@ -19,8 +19,16 @@ import {
   LayoutGrid,
   List,
   Upload,
+  Home,
+  Download,
+  Video,
+  Music,
+  Camera,
+  Monitor,
+  Settings,
+  Info
 } from 'lucide-react';
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useFileManager } from '@/hooks/use-file-manager';
 import { useIsMobile } from '@/hooks/use-mobile';
 import type { FileNode, FileType, SortConfig } from '@/lib/types';
@@ -68,7 +76,9 @@ import {
   SidebarMenuButton,
   SidebarFooter,
   SidebarInset,
+  SidebarSeparator,
 } from './ui/sidebar';
+import { SheetTitle } from './ui/sheet';
 
 type ActionType = 'create-folder' | 'create-file' | 'rename' | 'delete' | 'move';
 type ViewMode = 'list' | 'grid';
@@ -201,7 +211,7 @@ export function FileExplorer() {
   const handleItemClick = (file: FileNode) => {
     if (file.type === 'folder') {
       changeDirectory(file.path);
-    } else if (file.type === 'image' || file.type === 'text' || file.type === 'pdf') {
+    } else if (['image', 'text', 'pdf'].includes(file.type)) {
       setPreviewFile(file);
     } else {
         toast({ title: "Preview not available", description: `Cannot preview files of type "${file.type}".` });
@@ -347,7 +357,7 @@ export function FileExplorer() {
   const MobileListItem = ({ file }: { file: FileNode }) => (
     <Card onDoubleClick={() => handleItemClick(file)}>
       <CardContent className="p-3 flex items-center justify-between">
-        <div className="flex items-center gap-3 overflow-hidden">
+        <div className="flex items-center gap-3 overflow-hidden" onClick={() => handleItemClick(file)}>
           <FileTypeIcon type={file.type} />
           <div className="flex flex-col overflow-hidden">
             <span className="font-medium truncate">{file.name}</span>
@@ -438,22 +448,64 @@ export function FileExplorer() {
     }
   }
 
+  const handleSidebarClick = (path: string) => {
+    if(folderPaths.includes(path)) {
+      changeDirectory(path);
+    } else {
+      toast({
+        title: "Info",
+        description: `Navigation to "${path}" is not implemented yet.`,
+      })
+    }
+  }
+
+  const menuItems = [
+    { icon: Home, label: 'Wurzel', path: '/' },
+    { icon: Camera, label: 'DCIM', path: '/Pictures' },
+    { icon: Download, label: 'Downloads', path: '/' },
+    { icon: Video, label: 'Videos', path: '/' },
+    { icon: Music, label: 'Musik', path: '/' },
+    { icon: ImageIcon, label: 'Bilder', path: '/Pictures' },
+    { icon: Monitor, label: 'Screenshots', path: '/Pictures' },
+  ];
+
+  const settingsItems = [
+    { icon: Settings, label: 'Einstellungen', path: '/' },
+    { icon: Info, label: 'Über', path: '/' },
+  ];
+
   return (
     <SidebarProvider>
       <Sidebar>
         <SidebarHeader>
-          <h2 className="text-lg font-semibold">Folders</h2>
+           <div className="p-2">
+            <h2 className="text-lg font-semibold">Interner Speicher</h2>
+            <p className="text-xs text-muted-foreground">43.34 GB frei von 116 GB</p>
+          </div>
         </SidebarHeader>
         <SidebarContent>
           <SidebarMenu>
-            {folderPaths.map((path) => (
-              <SidebarMenuItem key={path}>
+            {menuItems.map((item) => (
+              <SidebarMenuItem key={item.label}>
                 <SidebarMenuButton
-                  onClick={() => changeDirectory(path)}
-                  isActive={currentPath === path}
+                  onClick={() => handleSidebarClick(item.path)}
+                  isActive={currentPath === item.path && item.path !== '/'}
                 >
-                  <Folder className="w-4 h-4" />
-                  <span>{path === '/' ? 'Home' : path.split('/').pop()}</span>
+                  <item.icon className="w-4 h-4" />
+                  <span>{item.label}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+          <SidebarSeparator/>
+          <SidebarMenu>
+            {settingsItems.map((item) => (
+              <SidebarMenuItem key={item.label}>
+                <SidebarMenuButton
+                  onClick={() => handleSidebarClick(item.path)}
+                >
+                  <item.icon className="w-4 h-4" />
+                  <span>{item.label}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             ))}
