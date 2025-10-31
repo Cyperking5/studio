@@ -81,7 +81,6 @@ import {
   SidebarInset,
   SidebarSeparator,
 } from './ui/sidebar';
-import { SheetTitle } from './ui/sheet';
 import { Progress } from './ui/progress';
 
 type ActionType = 'create-folder' | 'create-file' | 'rename' | 'delete' | 'move' | 'properties';
