@@ -21,6 +21,8 @@ const getFileType = (file: File): FileType => {
     return 'other';
 }
 
+const TOTAL_STORAGE = 116 * 1024 * 1024 * 1024; // 116 GB in bytes
+
 export function useFileManager() {
   const [files, setFiles] = useState<FileNode[]>([]);
   const [currentPath, setCurrentPath] = useState('/');
@@ -94,14 +96,14 @@ export function useFileManager() {
         setFiles(prevFiles => {
             const nodeToUpdate = prevFiles.find(f => f.id === newNode.id);
             if (nodeToUpdate) {
-                if (fileType === 'image') nodeToUpdate.url = result;
+                if (fileType === 'image' || fileType === 'pdf') nodeToUpdate.url = result;
                 else if (fileType === 'text') nodeToUpdate.content = result.split(',')[1] ? atob(result.split(',')[1]) : '';
             }
             return [...prevFiles];
         });
     };
 
-    if (fileType === 'image' || fileType === 'text') {
+    if (fileType === 'image' || fileType === 'text' || fileType === 'pdf') {
         reader.readAsDataURL(file);
     }
     setFiles(prevFiles => [...prevFiles, newNode]);
@@ -133,7 +135,7 @@ export function useFileManager() {
             if (f.id === id) {
                 return { ...f, name: newName, path: newPath, modifiedAt: new Date().toISOString() };
             }
-            if (f.path.startsWith(oldPath + '/')) {
+            if (f.type === 'folder' && f.path.startsWith(oldPath + '/')) {
                 return { ...f, path: newPath + f.path.substring(oldPath.length) };
             }
             return f;
@@ -149,17 +151,17 @@ export function useFileManager() {
     const idsToDelete = new Set<string>([id]);
   
     if (nodeToDelete.type === 'folder') {
-      const findChildrenRecursive = (parentId: string) => {
+      const findChildrenRecursive = (path: string) => {
         files.forEach(file => {
-          if (file.parentId === parentId) {
+          if (file.path.startsWith(path + '/') && file.path.split('/').length === path.split('/').length + 1) {
             idsToDelete.add(file.id);
             if (file.type === 'folder') {
-              findChildrenRecursive(file.id);
+              findChildrenRecursive(file.path);
             }
           }
         });
       };
-      findChildrenRecursive(id);
+      findChildrenRecursive(nodeToDelete.path);
     }
   
     setFiles(prevFiles => prevFiles.filter(f => !idsToDelete.has(f.id)));
@@ -191,7 +193,7 @@ export function useFileManager() {
             if (f.id === id) {
                 return { ...f, parentId: parentNode ? parentNode.id : null, path: newPath, modifiedAt: new Date().toISOString() };
             }
-            if (f.path.startsWith(oldPath + '/')) {
+            if (f.type === 'folder' && f.path.startsWith(oldPath + '/')) {
                 return { ...f, path: newPath + f.path.substring(oldPath.length) };
             }
             return f;
@@ -200,15 +202,62 @@ export function useFileManager() {
     });
   };
 
+  const copyNode = (id: string) => {
+    const nodeToCopy = files.find(n => n.id === id);
+    if (!nodeToCopy) return;
+
+    let newName = nodeToCopy.name;
+    let newPath = nodeToCopy.path;
+    let counter = 1;
+    const parentPath = newPath.substring(0, newPath.lastIndexOf('/')) || '/';
+    
+    while(files.some(f => f.path === newPath)) {
+        const nameParts = nodeToCopy.name.split('.');
+        const extension = nameParts.length > 1 ? '.' + nameParts.pop() : '';
+        const baseName = nameParts.join('.');
+        newName = `${baseName} (${counter})${extension}`;
+        newPath = parentPath === '/' ? `/${newName}` : `${parentPath}/${newName}`;
+        counter++;
+    }
+
+    const newNode: FileNode = {
+        ...nodeToCopy,
+        id: new Date().getTime().toString(),
+        name: newName,
+        path: newPath,
+        modifiedAt: new Date().toISOString(),
+    };
+    
+    setFiles(prev => [...prev, newNode]);
+  };
+
   const getFolderPath = useCallback(() => {
     return ['/', ...files.filter(f => f.type === 'folder').map(f => f.path)].sort();
   }, [files]);
 
+  const storageInfo = useMemo(() => {
+    const usedBytes = files.reduce((acc, file) => acc + file.size, 0);
+    const usedGb = usedBytes / (1024 * 1024 * 1024);
+    const totalGb = TOTAL_STORAGE / (1024 * 1024 * 1024);
+    return {
+        usedBytes,
+        totalBytes: TOTAL_STORAGE,
+        usedGb,
+        totalGb,
+        usedPercent: (usedBytes / TOTAL_STORAGE) * 100
+    }
+  }, [files]);
+
   const currentFiles = useMemo(() => {
     const parentNode = findNodeByPath(files, currentPath);
-    const filesInCurrentDir = files.filter(file => file.parentId === (parentNode ? parentNode.id : null));
-    
-    const filtered = searchTerm ? filesInCurrentDir.filter(f => f.name.toLowerCase().includes(searchTerm.toLowerCase())) : filesInCurrentDir;
+    const parentId = currentPath === '/' ? null : parentNode?.id;
+
+    const filesInCurrentDir = files.filter(file => {
+      if (currentPath === '/') return file.path.split('/').length === 2;
+      return file.path.startsWith(currentPath + '/') && file.path.split('/').length === currentPath.split('/').length + 1
+    });
+
+    const filtered = searchTerm ? files.filter(f => f.name.toLowerCase().includes(searchTerm.toLowerCase())) : filesInCurrentDir;
 
     return [...filtered].sort((a, b) => {
       if (a.type === 'folder' && b.type !== 'folder') return -1;
@@ -235,6 +284,7 @@ export function useFileManager() {
     deleteNode,
     renameNode,
     moveNode,
+    copyNode,
     getFolderPath,
     search,
     searchTerm,
@@ -242,5 +292,6 @@ export function useFileManager() {
     sortConfig,
     setSortConfig,
     uploadFile,
+    storageInfo,
   };
 }

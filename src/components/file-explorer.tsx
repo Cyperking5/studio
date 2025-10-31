@@ -1,7 +1,7 @@
 "use client";
 
 import Image from 'next/image';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format } from 'date-fns';
 import {
   File as FileIcon,
   FileText,
@@ -28,7 +28,7 @@ import {
   Settings,
   Info
 } from 'lucide-react';
-import React, { useState, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { useFileManager } from '@/hooks/use-file-manager';
 import { useIsMobile } from '@/hooks/use-mobile';
 import type { FileNode, FileType, SortConfig } from '@/lib/types';
@@ -82,8 +82,9 @@ import {
   SidebarSeparator,
 } from './ui/sidebar';
 import { SheetTitle } from './ui/sheet';
+import { Progress } from './ui/progress';
 
-type ActionType = 'create-folder' | 'create-file' | 'rename' | 'delete' | 'move';
+type ActionType = 'create-folder' | 'create-file' | 'rename' | 'delete' | 'move' | 'properties';
 type ViewMode = 'list' | 'grid';
 
 const FileTypeIcon = ({ type, className }: { type: FileType, className?: string }) => {
@@ -119,13 +120,15 @@ export function FileExplorer() {
     deleteNode,
     renameNode,
     moveNode,
+    copyNode,
     search,
     searchTerm,
     isLoading,
     sortConfig,
     setSortConfig,
     uploadFile,
-    getFolderPath
+    getFolderPath,
+    storageInfo
   } = useFileManager();
   const isMobile = useIsMobile();
   const { toast } = useToast();
@@ -156,7 +159,7 @@ export function FileExplorer() {
   };
 
   const handleAction = () => {
-    if (!actionType || (!actionNode && ['rename', 'delete', 'move'].includes(actionType))) return;
+    if (!actionType || (!actionNode && ['rename', 'delete', 'move', 'properties'].includes(actionType))) return;
 
     try {
       switch (actionType) {
@@ -209,6 +212,30 @@ export function FileExplorer() {
         event.target.value = '';
     }
   };
+
+  const handleDownload = (file: FileNode) => {
+    if (!file.url && file.type !== 'text') {
+      toast({ variant: 'destructive', title: 'Download nicht möglich', description: 'Für diese Datei ist keine Download-URL verfügbar.' });
+      return;
+    }
+  
+    const link = document.createElement('a');
+    link.download = file.name;
+    
+    if (file.type === 'text' && file.content) {
+      const blob = new Blob([file.content], { type: 'text/plain' });
+      link.href = URL.createObjectURL(blob);
+    } else if (file.url) {
+      link.href = file.url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+    }
+  
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  };
   
   const handleItemClick = (file: FileNode) => {
     if (file.type === 'folder') {
@@ -239,16 +266,29 @@ export function FileExplorer() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => openActionDialog('properties', node)}>
+          <Info className="mr-2 h-4 w-4" />
+          <span>Eigenschaften</span>
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={() => openActionDialog('rename', node)}>
           <PenSquare className="mr-2 h-4 w-4" />
-          <span>Rename</span>
+          <span>Umbenennen</span>
         </DropdownMenuItem>
-        
+        <DropdownMenuItem onClick={() => {
+            copyNode(node.id);
+            toast({ title: 'Kopiert', description: `"${node.name}" in die Zwischenablage kopiert.`});
+        }}>
+          <Copy className="mr-2 h-4 w-4" />
+          <span>Kopieren</span>
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={() => openActionDialog('move', node)}>
             <Move className="mr-2 h-4 w-4" />
-            <span>Move to</span>
+            <span>Verschieben nach</span>
         </DropdownMenuItem>
-
+        <DropdownMenuItem onClick={() => handleDownload(node)}>
+            <Download className="mr-2 h-4 w-4" />
+            <span>Herunterladen</span>
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={() => {
             if (navigator.share) {
                 navigator.share({
@@ -260,16 +300,12 @@ export function FileExplorer() {
             }
         }}>
           <Share2 className="mr-2 h-4 w-4" />
-          <span>Share</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => toast({title: "Copy not implemented."})}>
-          <Copy className="mr-2 h-4 w-4" />
-          <span>Copy</span>
+          <span>Teilen</span>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => openActionDialog('delete', node)}>
           <Trash2 className="mr-2 h-4 w-4" />
-          <span>Delete</span>
+          <span>Löschen</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -446,6 +482,24 @@ export function FileExplorer() {
                 </DialogFooter>
             </>
             );
+        case 'properties':
+            return (
+            <>
+                <DialogHeader>
+                <DialogTitle>Eigenschaften</DialogTitle>
+                </DialogHeader>
+                <div className="py-4 space-y-2 text-sm">
+                    <div className="flex justify-between"><span>Dateiname:</span> <span className="font-medium text-right break-all">{actionNode?.name}</span></div>
+                    <div className="flex justify-between"><span>Typ:</span> <span className="font-medium">{actionNode?.type}</span></div>
+                    <div className="flex justify-between"><span>Größe:</span> <span className="font-medium">{formatSize(actionNode?.size || 0)}</span></div>
+                    <div className="flex justify-between"><span>Pfad:</span> <span className="font-medium text-right break-all">{actionNode?.path}</span></div>
+                    <div className="flex justify-between"><span>Geändert am:</span> <span className="font-medium">{actionNode ? format(new Date(actionNode.modifiedAt), "dd.MM.yyyy, HH:mm") : ''}</span></div>
+                </div>
+                <DialogFooter>
+                    <Button onClick={closeActionDialog}>Schließen</Button>
+                </DialogFooter>
+            </>
+            );
         default: return null;
     }
   }
@@ -464,7 +518,7 @@ export function FileExplorer() {
   const menuItems = [
     { icon: Home, label: 'Wurzel', path: '/' },
     { icon: Camera, label: 'DCIM', path: '/Pictures' },
-    { icon: Download, label: 'Downloads', path: '/' },
+    { icon: Download, label: 'Downloads', path: '/Documents/Reports' },
     { icon: Video, label: 'Videos', path: '/' },
     { icon: Music, label: 'Musik', path: '/' },
     { icon: ImageIcon, label: 'Bilder', path: '/Pictures' },
@@ -482,9 +536,10 @@ export function FileExplorer() {
     <SidebarProvider>
       <Sidebar>
         <SidebarHeader>
-           <div className="p-2">
+           <div className="p-4 space-y-2">
             <h2 className="text-lg font-semibold">Interner Speicher</h2>
-            <p className="text-xs text-muted-foreground">43.34 GB frei von 116 GB</p>
+            <Progress value={storageInfo.usedPercent} className="h-2" />
+            <p className="text-xs text-muted-foreground">{storageInfo.usedGb.toFixed(2)} GB belegt von {storageInfo.totalGb.toFixed(2)} GB</p>
           </div>
         </SidebarHeader>
         <SidebarContent>
