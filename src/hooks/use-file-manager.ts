@@ -95,7 +95,7 @@ export function useFileManager() {
             const nodeToUpdate = prevFiles.find(f => f.id === newNode.id);
             if (nodeToUpdate) {
                 if (fileType === 'image') nodeToUpdate.url = result;
-                else if (fileType === 'text') nodeToUpdate.content = result.split(',')[1] ? atob(result.split(',[1]')) : '';
+                else if (fileType === 'text') nodeToUpdate.content = result.split(',')[1] ? atob(result.split(',')[1]) : '';
             }
             return [...prevFiles];
         });
