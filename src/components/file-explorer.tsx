@@ -48,6 +48,9 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent
 } from '@/components/ui/dropdown-menu';
 import {
   Dialog,
@@ -202,7 +205,6 @@ export function FileExplorer() {
         toast({ variant: "destructive", title: "Upload failed", description: err.message });
       }
     }
-    // Reset file input to allow uploading the same file again
     if(event.target) {
         event.target.value = '';
     }
@@ -474,6 +476,8 @@ export function FileExplorer() {
     { icon: Info, label: 'Über', path: '/' },
   ];
 
+  const [isSearchVisible, setIsSearchVisible] = useState(false);
+
   return (
     <SidebarProvider>
       <Sidebar>
@@ -516,81 +520,99 @@ export function FileExplorer() {
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>
-        <div className="h-full w-full flex flex-col bg-background text-foreground">
+        <div className="h-full w-full flex flex-col bg-background text-foreground relative">
           <header className="flex-shrink-0 flex items-center justify-between p-2 md:p-4 border-b">
             <div className="flex items-center gap-2">
               <SidebarTrigger />
-              <h1 className="text-lg font-bold">
-                {currentPath === '/'
-                  ? 'FileSurfer'
-                  : currentPath.split('/').pop()}
-              </h1>
+              <div className="flex flex-col">
+                <h1 className="text-lg font-bold">
+                    {currentPath === '/'
+                    ? 'Dateien'
+                    : currentPath.split('/').pop()}
+                </h1>
+                <p className="text-xs text-muted-foreground">{currentFiles.length} Dateien</p>
+              </div>
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center gap-1 flex-shrink-0">
+               <Button variant="ghost" size="icon" onClick={() => setIsSearchVisible(!isSearchVisible)}>
+                 <Search className="h-5 w-5" />
+               </Button>
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon">
+                            <List className="h-5 w-5" />
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                        <DropdownMenuSub>
+                            <DropdownMenuSubTrigger>Sortieren nach</DropdownMenuSubTrigger>
+                            <DropdownMenuSubContent>
+                                <DropdownMenuItem onClick={() => handleSort('name')}>Name</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleSort('modifiedAt')}>Datum</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleSort('size')}>Größe</DropdownMenuItem>
+                            </DropdownMenuSubContent>
+                        </DropdownMenuSub>
+                        {!isMobile && (
+                            <div className="p-2">
+                                <ToggleGroup
+                                    type="single"
+                                    value={viewMode}
+                                    onValueChange={(value) => value && setViewMode(value as ViewMode)}
+                                    className="w-full"
+                                >
+                                    <ToggleGroupItem value="list" aria-label="List view" className="w-1/2">
+                                    <List className="h-4 w-4 mr-2" />
+                                    Liste
+                                    </ToggleGroupItem>
+                                    <ToggleGroupItem value="grid" aria-label="Grid view" className="w-1/2">
+                                    <LayoutGrid className="h-4 w-4 mr-2" />
+                                    Gitter
+                                    </ToggleGroupItem>
+                                </ToggleGroup>
+                            </div>
+                        )}
+                    </DropdownMenuContent>
+                </DropdownMenu>
+
+               <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon">
+                            <MoreVertical className="h-5 w-5" />
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                        <DropdownMenuItem>
+                            <AiSuggestionDialog />
+                        </DropdownMenuItem>
+                         <DropdownMenuItem onClick={() => toast({title: "Not implemented"})}>
+                            Ordner ausblenden
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => toast({title: "Not implemented"})}>
+                            Einstellungen
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </div>
+          </header>
+
+          {isSearchVisible && (
+            <div className="p-2 md:p-4 border-b">
               <div className="relative">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                   type="search"
-                  placeholder="Search..."
-                  className="pl-9 w-40 md:w-64"
+                  placeholder="Suchen..."
+                  className="pl-9 w-full"
                   value={searchTerm}
                   onChange={(e) => search(e.target.value)}
+                  autoFocus
                 />
               </div>
-              <AiSuggestionDialog />
             </div>
-          </header>
+          )}
 
-          <div className="flex-shrink-0 flex items-center justify-between p-2 md:p-4 border-b">
-            <div className="flex items-center gap-2">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline">
-                    <Plus className="h-4 w-4 mr-2" /> New
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuItem
-                    onClick={() => openActionDialog('create-folder', null)}
-                  >
-                    New Folder
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => openActionDialog('create-file', null)}
-                  >
-                    New File
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <Button
-                variant="outline"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Upload className="h-4 w-4 mr-2" /> Upload
-              </Button>
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileUpload}
-                className="hidden"
-              />
-            </div>
-            {!isMobile && (
-              <ToggleGroup
-                type="single"
-                value={viewMode}
-                onValueChange={(value) =>
-                  value && setViewMode(value as ViewMode)
-                }
-              >
-                <ToggleGroupItem value="list" aria-label="List view">
-                  <List className="h-4 w-4" />
-                </ToggleGroupItem>
-                <ToggleGroupItem value="grid" aria-label="Grid view">
-                  <LayoutGrid className="h-4 w-4" />
-                </ToggleGroupItem>
-              </ToggleGroup>
-            )}
+          <div className="p-2 border-b">
+            <h3 className="text-sm font-semibold text-muted-foreground">Interner Speicher</h3>
           </div>
 
           <ScrollArea className="flex-1">
@@ -600,6 +622,31 @@ export function FileExplorer() {
               ? renderGridView()
               : renderListView()}
           </ScrollArea>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button className="absolute bottom-6 right-6 h-14 w-14 rounded-full shadow-lg" size="icon">
+                    <Plus className="h-6 w-6" />
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" side="top" className="mb-2">
+                <DropdownMenuItem onClick={() => openActionDialog('create-folder', null)}>
+                    Neuer Ordner
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => openActionDialog('create-file', null)}>
+                    Neue Datei
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
+                    Hochladen
+                </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileUpload}
+            className="hidden"
+          />
 
           <Dialog
             open={!!actionType}
@@ -655,3 +702,5 @@ export function FileExplorer() {
     </SidebarProvider>
   );
 }
+
+    
