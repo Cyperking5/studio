@@ -29,7 +29,7 @@ export function AboutDialog({ open, onOpenChange }: AboutDialogProps) {
         <DialogHeader>
           <DialogTitle>Über FileSurfer</DialogTitle>
           <DialogDescription>
-            Version 1.0.0
+            Version 1.1.0
           </DialogDescription>
         </DialogHeader>
         <Tabs defaultValue="imprint" className="w-full">
