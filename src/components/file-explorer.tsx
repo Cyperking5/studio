@@ -82,6 +82,7 @@ import {
   SidebarSeparator,
 } from './ui/sidebar';
 import { Progress } from './ui/progress';
+import { AboutDialog } from './about-dialog';
 
 type ActionType = 'create-folder' | 'create-file' | 'rename' | 'delete' | 'move' | 'properties';
 type ViewMode = 'list' | 'grid';
@@ -139,6 +140,7 @@ export function FileExplorer() {
   const [inputValue, setInputValue] = useState('');
   const [moveToPath, setMoveToPath] = useState<string>('');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [isAboutDialogOpen, setIsAboutDialogOpen] = useState(false);
   
   const openActionDialog = (type: ActionType, node: FileNode | null) => {
     setActionType(type);
@@ -506,6 +508,8 @@ export function FileExplorer() {
   const handleSidebarClick = (path: string) => {
     if(folderPaths.includes(path)) {
       changeDirectory(path);
+    } else if (path === 'about') {
+      setIsAboutDialogOpen(true);
     } else {
       toast({
         title: "Info",
@@ -526,7 +530,7 @@ export function FileExplorer() {
 
   const settingsItems = [
     { icon: Settings, label: 'Einstellungen', path: '/' },
-    { icon: Info, label: 'Über', path: '/' },
+    { icon: Info, label: 'Über', path: 'about' },
   ];
 
   const [isSearchVisible, setIsSearchVisible] = useState(false);
@@ -676,6 +680,8 @@ export function FileExplorer() {
               ? renderGridView()
               : renderListView()}
           </ScrollArea>
+          
+          <AboutDialog open={isAboutDialogOpen} onOpenChange={setIsAboutDialogOpen} />
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
