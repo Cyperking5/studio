@@ -15,8 +15,6 @@ import {
   Move,
   Share2,
   PenSquare,
-  Home,
-  ChevronRight,
   ArrowUpDown,
   LayoutGrid,
   List,
@@ -59,6 +57,18 @@ import { AiSuggestionDialog } from './ai-suggestion-dialog';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { cn } from '@/lib/utils';
 import { ThemeToggle } from './theme-toggle';
+import {
+  SidebarProvider,
+  Sidebar,
+  SidebarTrigger,
+  SidebarContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+  SidebarFooter,
+  SidebarInset,
+} from './ui/sidebar';
 
 type ActionType = 'create-folder' | 'create-file' | 'rename' | 'delete' | 'move';
 type ViewMode = 'list' | 'grid';
@@ -209,35 +219,6 @@ export function FileExplorer() {
 
   const folderPaths = useMemo(() => getFolderPath(), [getFolderPath]);
 
-  const renderBreadcrumbs = () => (
-    <div className="flex items-center gap-1 text-sm text-muted-foreground flex-wrap">
-      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => changeDirectory('/')}>
-        <Home className="h-4 w-4" />
-      </Button>
-      <ChevronRight className="h-4 w-4" />
-      {currentPath === '/' ? (
-        <span className="font-semibold text-foreground">Home</span>
-      ) : (
-        currentPath.substring(1).split('/').map((part, index, arr) => {
-          const path = '/' + arr.slice(0, index + 1).join('/');
-          const isLast = index === arr.length - 1;
-          return (
-            <React.Fragment key={path}>
-              <Button
-                variant="link"
-                className={cn("text-base h-auto p-0", isLast ? "font-semibold text-foreground" : "")}
-                onClick={() => !isLast && changeDirectory(path)}
-              >
-                {part}
-              </Button>
-              {!isLast && <ChevronRight className="h-4 w-4" />}
-            </React.Fragment>
-          );
-        })
-      )}
-    </div>
-  );
-
   const renderActionsDropdown = (node: FileNode) => (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -294,7 +275,7 @@ export function FileExplorer() {
   const FileListItem = ({ file }: { file: FileNode }) => (
     <TableRow
       className="cursor-pointer"
-      onClick={() => handleItemClick(file)}
+      onDoubleClick={() => handleItemClick(file)}
     >
       <TableCell>
         <div className="flex items-center gap-3">
@@ -336,7 +317,7 @@ export function FileExplorer() {
   const FileGridItem = ({ file }: { file: FileNode }) => (
     <Card
         className="cursor-pointer group relative"
-        onClick={() => handleItemClick(file)}
+        onDoubleClick={() => handleItemClick(file)}
     >
         <CardContent className="p-0 aspect-square flex flex-col items-center justify-center text-center">
             {file.type === 'image' && file.url ? (
@@ -364,7 +345,7 @@ export function FileExplorer() {
   );
   
   const MobileListItem = ({ file }: { file: FileNode }) => (
-    <Card onClick={() => handleItemClick(file)}>
+    <Card onDoubleClick={() => handleItemClick(file)}>
       <CardContent className="p-3 flex items-center justify-between">
         <div className="flex items-center gap-3 overflow-hidden">
           <FileTypeIcon type={file.type} />
@@ -458,71 +439,167 @@ export function FileExplorer() {
   }
 
   return (
-    <div className="h-full w-full flex flex-col bg-background text-foreground">
-      <header className="flex-shrink-0 flex items-center justify-between p-2 md:p-4 border-b">
-        <div className="flex-1 min-w-0">
-          {!isMobile && renderBreadcrumbs()}
-          {isMobile && <h1 className="text-lg font-bold">FileSurfer</h1>}
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input type="search" placeholder="Search..." className="pl-9 w-40 md:w-64" value={searchTerm} onChange={e => search(e.target.value)} />
-          </div>
-          <AiSuggestionDialog />
+    <SidebarProvider>
+      <Sidebar>
+        <SidebarHeader>
+          <h2 className="text-lg font-semibold">Folders</h2>
+        </SidebarHeader>
+        <SidebarContent>
+          <SidebarMenu>
+            {folderPaths.map((path) => (
+              <SidebarMenuItem key={path}>
+                <SidebarMenuButton
+                  onClick={() => changeDirectory(path)}
+                  isActive={currentPath === path}
+                >
+                  <Folder className="w-4 h-4" />
+                  <span>{path === '/' ? 'Home' : path.split('/').pop()}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+        </SidebarContent>
+        <SidebarFooter>
           <ThemeToggle />
-        </div>
-      </header>
+        </SidebarFooter>
+      </Sidebar>
+      <SidebarInset>
+        <div className="h-full w-full flex flex-col bg-background text-foreground">
+          <header className="flex-shrink-0 flex items-center justify-between p-2 md:p-4 border-b">
+            <div className="flex items-center gap-2">
+              <SidebarTrigger />
+              <h1 className="text-lg font-bold">
+                {currentPath === '/'
+                  ? 'FileSurfer'
+                  : currentPath.split('/').pop()}
+              </h1>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="search"
+                  placeholder="Search..."
+                  className="pl-9 w-40 md:w-64"
+                  value={searchTerm}
+                  onChange={(e) => search(e.target.value)}
+                />
+              </div>
+              <AiSuggestionDialog />
+            </div>
+          </header>
 
-      <div className="flex-shrink-0 flex items-center justify-between p-2 md:p-4 border-b">
-        <div className="flex items-center gap-2">
-            <DropdownMenu>
+          <div className="flex-shrink-0 flex items-center justify-between p-2 md:p-4 border-b">
+            <div className="flex items-center gap-2">
+              <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                    <Button variant="outline"><Plus className="h-4 w-4 mr-2" /> New</Button>
+                  <Button variant="outline">
+                    <Plus className="h-4 w-4 mr-2" /> New
+                  </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
-                    <DropdownMenuItem onClick={() => openActionDialog('create-folder', null)}>New Folder</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => openActionDialog('create-file', null)}>New File</DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => openActionDialog('create-folder', null)}
+                  >
+                    New Folder
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => openActionDialog('create-file', null)}
+                  >
+                    New File
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
-            </DropdownMenu>
-            <Button variant="outline" onClick={() => fileInputRef.current?.click()}><Upload className="h-4 w-4 mr-2"/> Upload</Button>
-            <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
-        </div>
-        {!isMobile && (
-        <ToggleGroup type="single" value={viewMode} onValueChange={(value) => value && setViewMode(value as ViewMode)}>
-            <ToggleGroupItem value="list" aria-label="List view"><List className="h-4 w-4"/></ToggleGroupItem>
-            <ToggleGroupItem value="grid" aria-label="Grid view"><LayoutGrid className="h-4 w-4"/></ToggleGroupItem>
-        </ToggleGroup>
-        )}
-      </div>
-
-      <ScrollArea className="flex-1">
-        {isMobile ? renderMobileView() : viewMode === 'grid' ? renderGridView() : renderListView()}
-      </ScrollArea>
-      
-      <Dialog open={!!actionType} onOpenChange={(open) => !open && closeActionDialog()}>
-        <DialogContent>
-            <ActionDialogContent />
-        </DialogContent>
-      </Dialog>
-      
-      <Dialog open={!!previewFile} onOpenChange={(open) => !open && setPreviewFile(null)}>
-        <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col">
-            <DialogHeader>
-                <DialogTitle>{previewFile?.name}</DialogTitle>
-                <DialogDescription>{previewFile?.type} - {formatSize(previewFile?.size || 0)}</DialogDescription>
-            </DialogHeader>
-            <div className="flex-1 overflow-auto my-4">
-                {previewFile?.type === 'image' && previewFile.url && <Image src={previewFile.url} alt={previewFile.name} width={1200} height={800} className="w-full h-auto object-contain" />}
-                {previewFile?.type === 'text' && <pre className="text-sm whitespace-pre-wrap">{previewFile.content}</pre>}
-                {previewFile?.type === 'pdf' && previewFile.url && <iframe src={previewFile.url} className="w-full h-full" />}
-                {previewFile?.type === 'pdf' && !previewFile.url && <p className="text-center text-muted-foreground p-8">PDF preview is not yet implemented.</p>}
+              </DropdownMenu>
+              <Button
+                variant="outline"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload className="h-4 w-4 mr-2" /> Upload
+              </Button>
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileUpload}
+                className="hidden"
+              />
             </div>
-            <DialogFooter>
+            {!isMobile && (
+              <ToggleGroup
+                type="single"
+                value={viewMode}
+                onValueChange={(value) =>
+                  value && setViewMode(value as ViewMode)
+                }
+              >
+                <ToggleGroupItem value="list" aria-label="List view">
+                  <List className="h-4 w-4" />
+                </ToggleGroupItem>
+                <ToggleGroupItem value="grid" aria-label="Grid view">
+                  <LayoutGrid className="h-4 w-4" />
+                </ToggleGroupItem>
+              </ToggleGroup>
+            )}
+          </div>
+
+          <ScrollArea className="flex-1">
+            {isMobile
+              ? renderMobileView()
+              : viewMode === 'grid'
+              ? renderGridView()
+              : renderListView()}
+          </ScrollArea>
+
+          <Dialog
+            open={!!actionType}
+            onOpenChange={(open) => !open && closeActionDialog()}
+          >
+            <DialogContent>
+              <ActionDialogContent />
+            </DialogContent>
+          </Dialog>
+
+          <Dialog
+            open={!!previewFile}
+            onOpenChange={(open) => !open && setPreviewFile(null)}
+          >
+            <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col">
+              <DialogHeader>
+                <DialogTitle>{previewFile?.name}</DialogTitle>
+                <DialogDescription>
+                  {previewFile?.type} - {formatSize(previewFile?.size || 0)}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex-1 overflow-auto my-4">
+                {previewFile?.type === 'image' && previewFile.url && (
+                  <Image
+                    src={previewFile.url}
+                    alt={previewFile.name}
+                    width={1200}
+                    height={800}
+                    className="w-full h-auto object-contain"
+                  />
+                )}
+                {previewFile?.type === 'text' && (
+                  <pre className="text-sm whitespace-pre-wrap">
+                    {previewFile.content}
+                  </pre>
+                )}
+                {previewFile?.type === 'pdf' && previewFile.url && (
+                  <iframe src={previewFile.url} className="w-full h-full" />
+                )}
+                {previewFile?.type === 'pdf' && !previewFile.url && (
+                  <p className="text-center text-muted-foreground p-8">
+                    PDF preview is not yet implemented.
+                  </p>
+                )}
+              </div>
+              <DialogFooter>
                 <Button onClick={() => setPreviewFile(null)}>Close</Button>
-            </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
